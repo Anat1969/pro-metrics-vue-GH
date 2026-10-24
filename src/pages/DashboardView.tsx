@@ -1,4 +1,4 @@
-import React, { useState, useMemo } from 'react';
+import React, { useState, useMemo, useCallback, Suspense, lazy } from 'react';
 import { useNavigate, useParams } from 'react-router-dom';
 import { INDICATORS, TOTAL_MAX_SCORE, type Project, type IndicatorData } from '@/data/indicators';
 import { calcFinalScore } from '@/lib/scoring';
@@ -8,9 +8,23 @@ import CategoryScoreStrip from '@/components/CategoryScoreStrip';
 import IndicatorCard from '@/components/IndicatorCard';
 import IndicatorModal from '@/components/IndicatorModal';
 import Timeline from '@/components/Timeline';
+import Recommendations from '@/components/Recommendations';
+import { levelsFor } from '@/lib/autoscore';
 import { Button } from '@/components/ui/button';
 import ThemeToggle from '@/components/ThemeToggle';
-import { ArrowRight, Download, FileText, Clock } from 'lucide-react';
+import { ArrowRight, Download, FileText, Clock, Box, Building, Sparkles } from 'lucide-react';
+
+const NeighborhoodScene = lazy(() => import('@/components/three/NeighborhoodScene'));
+const ScoreCity = lazy(() => import('@/components/three/ScoreCity'));
+
+type DashTab = 'indicators' | 'twin' | 'city' | 'recs' | 'timeline';
+
+const SceneFallback = () => (
+  <div className="h-full flex flex-col items-center justify-center gap-3 text-muted-foreground">
+    <div className="w-10 h-10 rounded-full border-4 border-primary/30 border-t-primary animate-spin" />
+    טוען סצנה תלת-ממדית…
+  </div>
+);
 
 interface DashboardViewProps {
   projects: Project[];
@@ -27,7 +41,9 @@ const DashboardView: React.FC<DashboardViewProps> = ({ projects, setProjects }) 
   const [activeTopic, setActiveTopic] = useState('הכל');
   const [search, setSearch] = useState('');
   const [selectedIndicator, setSelectedIndicator] = useState<string | null>(null);
-  const [activeTab, setActiveTab] = useState<'indicators' | 'timeline'>('indicators');
+  const [activeTab, setActiveTab] = useState<DashTab>('indicators');
+  const levels = useMemo(() => levelsFor(project ?? null), [project]);
+  const openIndicator = useCallback((indId: string) => setSelectedIndicator(indId), []);
 
   const score = project ? calcFinalScore(project) : 0;
   const evaluated = project ? Object.values(project.indicators).filter(d => d.status !== 'not_started').length : 0;
@@ -147,30 +163,28 @@ const DashboardView: React.FC<DashboardViewProps> = ({ projects, setProjects }) 
 
       <main className="max-w-7xl mx-auto px-5 py-10 space-y-10">
         {/* ───── Tabs ───── */}
-        <nav className="flex gap-1.5 bg-muted/50 p-1.5 rounded-xl w-fit">
-          <button
-            onClick={() => setActiveTab('indicators')}
-            className={`flex items-center gap-2 px-6 py-2.5 rounded-lg text-sm font-semibold transition-all ${
-              activeTab === 'indicators'
-                ? 'bg-card text-foreground shadow-sm'
-                : 'text-muted-foreground hover:text-foreground'
-            }`}
-          >
-            <FileText className="w-4 h-4" />
-            מדדים
-            <span className="font-mono-label text-xs text-muted-foreground">{evaluated}/{totalIndicators}</span>
-          </button>
-          <button
-            onClick={() => setActiveTab('timeline')}
-            className={`flex items-center gap-2 px-6 py-2.5 rounded-lg text-sm font-semibold transition-all ${
-              activeTab === 'timeline'
-                ? 'bg-card text-foreground shadow-sm'
-                : 'text-muted-foreground hover:text-foreground'
-            }`}
-          >
-            <Clock className="w-4 h-4" />
-            טיימליין
-          </button>
+        <nav className="flex gap-1.5 bg-muted/50 p-1.5 rounded-xl w-full sm:w-fit overflow-x-auto">
+          {([
+            { key: 'indicators', label: 'מדדים', icon: FileText, extra: `${evaluated}/${totalIndicators}` },
+            { key: 'twin', label: 'תאום דיגיטלי 3D', icon: Box },
+            { key: 'city', label: 'עיר הציונים 3D', icon: Building },
+            { key: 'recs', label: 'המלצות חכמות', icon: Sparkles },
+            { key: 'timeline', label: 'טיימליין', icon: Clock },
+          ] as { key: DashTab; label: string; icon: React.ElementType; extra?: string }[]).map(t => (
+            <button
+              key={t.key}
+              onClick={() => setActiveTab(t.key)}
+              className={`flex items-center gap-2 px-4 sm:px-5 py-2.5 rounded-lg text-sm font-semibold whitespace-nowrap transition-all ${
+                activeTab === t.key
+                  ? 'bg-card text-foreground shadow-sm'
+                  : 'text-muted-foreground hover:text-foreground'
+              }`}
+            >
+              <t.icon className="w-4 h-4" />
+              {t.label}
+              {t.extra && <span className="font-mono-label text-xs text-muted-foreground">{t.extra}</span>}
+            </button>
+          ))}
         </nav>
 
         {activeTab === 'indicators' ? (
@@ -244,6 +258,53 @@ const DashboardView: React.FC<DashboardViewProps> = ({ projects, setProjects }) 
               )}
             </section>
           </div>
+        ) : activeTab === 'twin' ? (
+          <div className="animate-fade-in space-y-5">
+            <div className="section-frame">
+              <div className="section-frame-header">
+                <div>
+                  <h3 className="section-title">תאום דיגיטלי של השכונה</h3>
+                  <p className="section-rationale">
+                    כל מדד מומחש באובייקט חי — עצים, אוטובוסים, פאנלים סולאריים, נגר, תאורה ועוד — שגדל ומשתנה לפי הניקוד.
+                    מסלול השמש מחושב לאשדוד: בדקו צל בקיץ וזכויות שמש בחורף. לחצו על אובייקט כדי לפתוח את המדד.
+                  </p>
+                </div>
+              </div>
+            </div>
+            <div className="h-[72vh] min-h-[480px] rounded-2xl overflow-hidden border border-border shadow-lg bg-muted">
+              <Suspense fallback={<SceneFallback />}>
+                <NeighborhoodScene levels={levels} highlightId={selectedIndicator} onSelect={openIndicator} />
+              </Suspense>
+            </div>
+          </div>
+        ) : activeTab === 'city' ? (
+          <div className="animate-fade-in space-y-5">
+            <div className="section-frame">
+              <div className="section-frame-header">
+                <div>
+                  <h3 className="section-title">עיר הציונים</h3>
+                  <p className="section-rationale">44 מגדלים, שלושה רבעים — גובה כל מגדל הוא הניקוד שהושג מול המקסימום. לחצו על מגדל לעדכון.</p>
+                </div>
+              </div>
+            </div>
+            <div className="h-[68vh] min-h-[440px] rounded-2xl overflow-hidden border border-border shadow-lg">
+              <Suspense fallback={<SceneFallback />}>
+                <ScoreCity project={project} onSelect={openIndicator} />
+              </Suspense>
+            </div>
+          </div>
+        ) : activeTab === 'recs' ? (
+          <div className="animate-fade-in space-y-5">
+            <div className="section-frame">
+              <div className="section-frame-header">
+                <div>
+                  <h3 className="section-title">המלצות חכמות ותרחישי "מה אם"</h3>
+                  <p className="section-rationale">ניתוח אוטומטי של הנקודות הפתוחות, מדורג לפי תמורה למאמץ — עם הצעד המעשי הבא לכל מדד</p>
+                </div>
+              </div>
+            </div>
+            <Recommendations project={project} onOpen={openIndicator} />
+          </div>
         ) : (
           <div className="animate-fade-in">
             <div className="section-frame">
@@ -275,6 +336,7 @@ const DashboardView: React.FC<DashboardViewProps> = ({ projects, setProjects }) 
         open={!!selectedIndicator}
         indicator={selectedInd ?? null}
         data={selectedIndicator ? project.indicators[selectedIndicator] : undefined}
+        project={project}
         onClose={() => setSelectedIndicator(null)}
         onSave={handleSaveIndicator}
       />

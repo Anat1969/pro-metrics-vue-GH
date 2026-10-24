@@ -25,6 +25,8 @@ export interface IndicatorData {
   notes: string;
   lastUpdated: string;
   history: HistoryEntry[];
+  /** Practical checklist state, aligned with PRACTICES[id].checks */
+  checks?: boolean[];
 }
 
 export interface Project {

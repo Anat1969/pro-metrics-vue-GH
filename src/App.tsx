@@ -30,7 +30,7 @@ const App = () => {
       <TooltipProvider>
         <Toaster />
         <Sonner />
-        <BrowserRouter>
+        <BrowserRouter basename={import.meta.env.BASE_URL.replace(/\/$/, '')}>
           <Routes>
             <Route path="/" element={<ProjectsView projects={projects} setProjects={setProjects} />} />
             <Route path="/project/:id" element={<DashboardView projects={projects} setProjects={setProjects} />} />

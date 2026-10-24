@@ -1,73 +1,40 @@
-# Welcome to your Lovable project
+# שכונה 360° — הערכת קיימות לשכונות
 
-## Project info
+מערכת להערכת תוכניות שכונה לפי 44 מדדי הקיימות של החוברת (3 פרקים, 13 נושאים), עם תאום דיגיטלי תלת-ממדי, בדיקות מעשיות לכל מדד והמלצות אוטומטיות.
 
-**URL**: https://lovable.dev/projects/REPLACE_WITH_PROJECT_ID
+## מה יש במערכת
 
-## How can I edit this code?
+| יכולת | מה היא עושה |
+|---|---|
+| **תאום דיגיטלי 3D** | שכונה פרוצדורלית שבה כל מדד מומחש באובייקט חי: עצי רחוב (b14), פרגולות (b15), אוטובוסים ותחנות (b03), שביל ורוכבי אופניים (b04), פאנלים סולאריים וסוללה (c02), גגות ירוקים/בהירים (c01/b13), אגם נגר וגני גשם (b10), תאורה מוסתרת בגוון חם (b19), טורבינות ורחפן (c09), זיהום מארובה (b17), קווי מתח (b20), אתר בנייה (b18, c05–c08) ועוד. האובייקטים גדלים ומשתנים לפי הניקוד. לחיצה על אובייקט פותחת את המדד. |
+| **מסלול שמש אמיתי** | חישוב גובה השמש והאזימוט לאשדוד (31.8°N) לפי שעה ועונה (21.6 / 21.3 / 21.12), עם צללים בזמן אמת, מחזור יום-לילה, חלונות מוארים בלילה ו-bloom. כך אפשר לבדוק בפועל את הצל במדרכות בקיץ (b15) ואת זכויות השמש בחורף (c03). |
+| **בדיקה מעשית לכל מדד** | רשימת בדיקה, אסמכתאות לצרף ושורת "איך מיישמים בפועל". הניקוד והסטטוס מוצעים אוטומטית לפי שיעור הבדיקות שמתקיימות. |
+| **הדמיה בתוך המדד** | בחלון המדד יש לשונית תלת-ממד: המצלמה עפה לאזור הרלוונטי, וכל הזזה של סליידר הניקוד משנה את השכונה מיד. |
+| **עיר הציונים 3D** | 44 מגדלים בשלושה רבעים. הגוש השקוף מראה את הניקוד המירבי, הגוש הצבעוני את מה שהושג, ומגדל זוהר מסמן מדד שמוצה. |
+| **המלצות חכמות** | דירוג הנקודות הפתוחות לפי תמורה למאמץ, עם הצעד המעשי הבא לכל מדד ותרחישי "מה אם" (מהירים / 5 / 10 הראשונות). |
+| **פרויקט הדגמה, גיבוי ושחזור** | טעינת שכונת הדגמה בלחיצה, וגיבוי ושחזור של כל הפרויקטים כ-JSON. |
+| קיים מהגרסה הקודמת | סינון ומיון, טיימליין שינויים, ייצוא דוח Word, מצב כהה. |
 
-There are several ways of editing your application.
-
-**Use Lovable**
-
-Simply visit the [Lovable Project](https://lovable.dev/projects/REPLACE_WITH_PROJECT_ID) and start prompting.
-
-Changes made via Lovable will be committed automatically to this repo.
-
-**Use your preferred IDE**
-
-If you want to work locally using your own IDE, you can clone this repo and push changes. Pushed changes will also be reflected in Lovable.
-
-The only requirement is having Node.js & npm installed - [install with nvm](https://github.com/nvm-sh/nvm#installing-and-updating)
-
-Follow these steps:
+## פיתוח
 
 ```sh
-# Step 1: Clone the repository using the project's Git URL.
-git clone <YOUR_GIT_URL>
-
-# Step 2: Navigate to the project directory.
-cd <YOUR_PROJECT_NAME>
-
-# Step 3: Install the necessary dependencies.
-npm i
-
-# Step 4: Start the development server with auto-reloading and an instant preview.
-npm run dev
+npm install
+npm run dev      # http://localhost:8080
+npm test         # בדיקות יחידה (vitest)
+npm run build
 ```
 
-**Edit a file directly in GitHub**
+טכנולוגיות: React 18, Vite, TypeScript, Tailwind ו-shadcn/ui. התלת-ממד בנוי על three.js עם @react-three/fiber, ‏drei ו-postprocessing, ונטען בטעינה עצלה כדי שהעמוד הראשי יעלה מהר. אין בפרויקט נכסים חיצוניים: הטקסטורות והסביבה נוצרות בקוד.
 
-- Navigate to the desired file(s).
-- Click the "Edit" button (pencil icon) at the top right of the file view.
-- Make your changes and commit the changes.
+## פריסה ל-GitHub Pages
 
-**Use GitHub Codespaces**
+ה-workflow שב-`.github/workflows/pages.yml` מריץ את הבדיקות, בונה ומפרסם בכל דחיפה ל-`main`. לפני הפעם הראשונה צריך להגדיר בריפו: **Settings → Pages → Source: GitHub Actions**.
 
-- Navigate to the main page of your repository.
-- Click on the "Code" button (green button) near the top right.
-- Select the "Codespaces" tab.
-- Click on "New codespace" to launch a new Codespace environment.
-- Edit files directly within the Codespace and commit and push your changes once you're done.
+## מבנה
 
-## What technologies are used for this project?
+- `src/data/indicators.ts`: 44 המדדים מהחוברת.
+- `src/data/practices.ts`: לכל מדד רשימת בדיקה, אסמכתאות, מאמץ ואזור בתאום הדיגיטלי.
+- `src/lib/autoscore.ts`: ניקוד מוצע, המלצות, תרחישים ופרויקט הדגמה.
+- `src/components/three/`: התאום הדיגיטלי (`NeighborhoodScene`, `parts`), עיר הציונים (`ScoreCity`) ומסלול השמש (`env`).
 
-This project is built with:
-
-- Vite
-- TypeScript
-- React
-- shadcn-ui
-- Tailwind CSS
-
-## How can I deploy this project?
-
-Simply open [Lovable](https://lovable.dev/projects/REPLACE_WITH_PROJECT_ID) and click on Share -> Publish.
-
-## Can I connect a custom domain to my Lovable project?
-
-Yes, you can!
-
-To connect a domain, navigate to Project > Settings > Domains and click Connect Domain.
-
-Read more here: [Setting up a custom domain](https://docs.lovable.dev/features/custom-domain#custom-domain)
+> הניקוד המוצע יחסי לשיעור הבדיקות שמתקיימות, והוא כלי עזר בלבד. הניקוד הרשמי נקבע לפי ספי החוברת (מספר העמוד מופיע בכל מדד).
