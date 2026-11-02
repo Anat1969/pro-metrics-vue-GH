@@ -16,7 +16,7 @@ export default function GateBars({ rows, targets, selected, onSelect }: { rows: 
           <section key={g} className="gb-group">
             <header className="gb-head">
               <h3>{GATES[g].label}</h3>
-              <span className="src">{GATES[g].when} · <bdi className="num" style={{ color: '#1A1A18' }}>{list.length}</bdi> תוכניות · <bdi className="num" style={{ color: '#1A1A18' }}>{pass}</bdi> עומדות ביעד</span>
+              <span className="src">{GATES[g].when} · אפשר לדרוש עד <bdi className="num" style={{ color: '#1A1A18' }}>{list[0].r.now.max}</bdi> · <bdi className="num" style={{ color: '#1A1A18' }}>{list.length}</bdi> תוכניות · <bdi className="num" style={{ color: '#1A1A18' }}>{pass}</bdi> עומדות ביעד</span>
             </header>
             <ul>
               {list.map(r => (

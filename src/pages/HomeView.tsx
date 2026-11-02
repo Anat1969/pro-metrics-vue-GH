@@ -59,7 +59,7 @@ export default function HomeView({ projects, setProjects, saved }: AppProps) {
           <h1 className="home-title rise" style={{ animationDelay: '60ms' }}>שער היעדים</h1>
           <Rich as="p" className="home-insight rise">{'**האם התוכנית עומדת ביעד, לפני שמאשרים?**'}</Rich>
           <p className="home-explain rise" style={{ animationDelay: '120ms' }}>
-            כל תוכנית התחדשות נבדקת מול יעד השלב שלה: <b>אישור תב"ע</b> או <b>אישור תוכנית בינוי</b>.
+            כל תוכנית נבדקת מול השלב שלה: <b>אישור תב"ע</b> או <b>אישור תוכנית בינוי</b>. מה אפשר לדרוש בו, מה חסר, ומה עובר לשלב הבא.
             <br />
             התשובה אומרת גם <b>מה לדרוש מהיזם</b> לפני האישור.
           </p>
@@ -136,7 +136,7 @@ export default function HomeView({ projects, setProjects, saved }: AppProps) {
               {hover ? (
                 <Rich>{`**${hover.plan.title}** · ${GATES[hover.gate].label} · **${hover.r.points}** נקודות מול יעד **${hover.r.target}** · ${VERDICT_HE[hover.r.verdict].label}`}</Rich>
               ) : (
-                <Rich>{`**${rows.length}** תוכניות התחדשות באשדוד, בשורה לכל שער. **גובה** המבנה הוא הנקודות שהוכחו. **הזכוכית הצהובה** היא היעד. מבנה שעובר אותה עומד ביעד.`}</Rich>
+                <Rich>{`**${rows.length}** תוכניות באשדוד (**${rows.filter(r => r.plan.kind === 'urban_renewal').length}** התחדשות עירונית), בשורה לכל שער. **גובה** המבנה הוא הנקודות שהוכחו. **הזכוכית הצהובה** היא היעד. מבנה שעובר אותה עומד ביעד.`}</Rich>
               )}
             </figcaption>
           </figure>

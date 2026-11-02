@@ -14,6 +14,8 @@ import Rich from '@/components/Rich';
 import type { AppProps } from '@/App';
 
 const VERDICTS: Verdict[] = ['pass', 'evidence', 'fail'];
+const KINDS: Record<string, string> = { urban_renewal: 'התחדשות עירונית', new_construction: 'בנייה חדשה' };
+const K_LABEL = Object.fromEntries(Object.entries(KINDS).map(([k, v]) => [v, k])) as Record<string, string>;
 const V_LABEL = Object.fromEntries(VERDICTS.map(v => [VERDICT_HE[v].label, v])) as Record<string, Verdict>;
 const G_LABEL = Object.fromEntries(GATE_ORDER.map(g => [GATES[g].label, g])) as Record<string, Gate>;
 type Pane = 'board' | 'list' | 'detail';
@@ -36,6 +38,7 @@ export default function PlansView({ projects, saved }: AppProps) {
   const sel = params.get('p');
   const gates = params.get('g')?.split('|').filter(Boolean) as Gate[] ?? [];
   const verdicts = params.get('v')?.split('|').filter(Boolean) as Verdict[] ?? [];
+  const kinds = params.get('k')?.split('|').filter(Boolean) ?? [];
   const [pane, setPane] = useState<Pane>(sel ? 'detail' : 'board');
   const patch = (next: Record<string, string | null>) => {
     const p = new URLSearchParams(params);
@@ -45,7 +48,7 @@ export default function PlansView({ projects, saved }: AppProps) {
   const select = (id: string | null) => { patch({ p: id }); if (id) setPane('detail'); };
 
   const filtered = useMemo(() => rows
-    .filter(r => (!gates.length || gates.includes(r.gate)) && (!verdicts.length || verdicts.includes(r.r.verdict)) &&
+    .filter(r => (!gates.length || gates.includes(r.gate)) && (!kinds.length || kinds.includes(r.plan.kind)) && (!verdicts.length || verdicts.includes(r.r.verdict)) &&
       (!search.trim() || matchesHebrew(`${r.plan.title} ${r.quarter} ${r.plan.plan_number ?? ''}`, search) || (r.plan.plan_number ?? '').includes(search.trim())))
     .sort((a, b) => GATE_ORDER.indexOf(a.gate) - GATE_ORDER.indexOf(b.gate) || b.r.points - a.r.points), [rows, gates, verdicts, search]);
   const row = rows.find(r => r.plan.id === sel) ?? null;
@@ -68,7 +71,7 @@ export default function PlansView({ projects, saved }: AppProps) {
       <div className="dash">
         <header className="dash-head">
           <div style={{ minWidth: 0 }}>
-            <p className="crumbs"><Link to="/">בית</Link> › תוכניות התחדשות עירונית</p>
+            <p className="crumbs"><Link to="/">בית</Link> › תוכניות בעיר</p>
             <h1 className="dash-title">האם התוכנית עומדת ביעד, לפני שמאשרים?</h1>
             <p className="src"><Rich>{`**${upPass}** מתוך **${upcoming.length}** תוכניות שלפני אישור עומדות ביעד. **${upEvid}** תלויות בראיות.`}</Rich> · {dataLine}</p>
           </div>
@@ -104,6 +107,9 @@ export default function PlansView({ projects, saved }: AppProps) {
               <Selector label="שער" options={GATE_ORDER.map(g => GATES[g].label)} value={gates.map(g => GATES[g].label)}
                 countOf={o => rows.filter(r => r.gate === G_LABEL[o]).length}
                 onChange={v => patch({ g: v.map(l => G_LABEL[l]).join('|') || null })} />
+              <Selector label="סוג" options={Object.values(KINDS)} value={kinds.map(k => KINDS[k])}
+                countOf={o => rows.filter(r => r.plan.kind === K_LABEL[o]).length}
+                onChange={v => patch({ k: v.map(l => K_LABEL[l]).join('|') || null })} />
               <Selector label="מצב" options={VERDICTS.map(v => VERDICT_HE[v].label)} value={verdicts.map(v => VERDICT_HE[v].label)}
                 colorOf={o => VERDICT_COLOR[V_LABEL[o]]} countOf={o => rows.filter(r => r.r.verdict === V_LABEL[o]).length}
                 onChange={v => patch({ v: v.map(l => V_LABEL[l]).join('|') || null })} />
