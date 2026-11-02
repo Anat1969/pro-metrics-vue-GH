@@ -6,6 +6,7 @@ import { type Project } from '@/data/indicators';
 import HomeView from './pages/HomeView';
 import DashboardView from './pages/DashboardView';
 import PlansView from './pages/PlansView';
+import ReportView from './pages/ReportView';
 import NotFound from './pages/NotFound';
 
 const STORAGE_KEY = 'shchuna360_projects';
@@ -46,6 +47,7 @@ const App = () => {
         <Routes>
           <Route path="/" element={<HomeView {...props} />} />
           <Route path="/plans" element={<PlansView {...props} />} />
+          <Route path="/report/:id" element={<ReportView />} />
           <Route path="/project/:id" element={<DashboardView {...props} />} />
           <Route path="*" element={<NotFound />} />
         </Routes>
