@@ -1,285 +1,254 @@
-import React, { useState, useMemo } from 'react';
-import { useNavigate, useParams } from 'react-router-dom';
-import { INDICATORS, TOTAL_MAX_SCORE, type Project, type IndicatorData } from '@/data/indicators';
-import { calcFinalScore } from '@/lib/scoring';
-import { downloadReport } from '@/lib/export';
-import FilterBar, { type SortOption } from '@/components/FilterBar';
-import CategoryScoreStrip from '@/components/CategoryScoreStrip';
-import IndicatorCard from '@/components/IndicatorCard';
-import IndicatorModal from '@/components/IndicatorModal';
+import React, { useMemo, useState } from 'react';
+import { Link, useNavigate, useParams, useSearchParams } from 'react-router-dom';
+import { INDICATORS, CHAPTERS, TOPICS, CHAPTER_HEX, CHAPTER_META, TOTAL_MAX_SCORE, STATUS_LABELS, type IndicatorData, type Project } from '@/data/indicators';
+import { calcFinalScore, achievableMax, countEvaluated, chapterEarnedScore, chapterMaxScore, chapterPctOfMax, matchesHebrew } from '@/lib/scoring';
+import { isDemo } from '@/lib/demo';
+import TopBar from '@/components/TopBar';
+import Rose from '@/components/Rose';
+import Selector from '@/components/Selector';
+import IndicatorPanel from '@/components/IndicatorPanel';
+import EvaluationPanel from '@/components/EvaluationPanel';
 import Timeline from '@/components/Timeline';
-import { Button } from '@/components/ui/button';
-import ThemeToggle from '@/components/ThemeToggle';
-import { ArrowRight, Download, FileText, Clock } from 'lucide-react';
+import NewProjectModal, { type NewProjectData } from '@/components/NewProjectModal';
+import {
+  AlertDialog, AlertDialogAction, AlertDialogCancel, AlertDialogContent,
+  AlertDialogDescription, AlertDialogFooter, AlertDialogHeader, AlertDialogTitle,
+} from '@/components/ui/alert-dialog';
+import type { AppProps } from '@/App';
+import type { MenuItem } from '@/components/AIMenu';
 
-interface DashboardViewProps {
-  projects: Project[];
-  setProjects: React.Dispatch<React.SetStateAction<Project[]>>;
-}
+type Sort = 'booklet' | 'open' | 'score_desc' | 'status' | 'recent';
+const SORTS: { v: Sort; label: string }[] = [
+  { v: 'booklet', label: 'סדר החוברת' },
+  { v: 'open', label: 'נקודות פתוחות' },
+  { v: 'score_desc', label: 'ניקוד, מהגבוה' },
+  { v: 'status', label: 'סטטוס' },
+  { v: 'recent', label: 'עודכן לאחרונה' },
+];
+type Pane = 'rose' | 'list' | 'detail';
+const hhmm = (t: number) => new Date(t).toLocaleTimeString('he-IL', { hour: '2-digit', minute: '2-digit' });
 
-const DashboardView: React.FC<DashboardViewProps> = ({ projects, setProjects }) => {
+// דוח Word נטען רק כשמבקשים אותו, כדי שהדף ייטען מהר.
+const downloadReport = (p: Project) => import('@/lib/export').then(m => m.downloadReport(p));
+
+export default function DashboardView({ projects, setProjects, saved }: AppProps) {
   const { id } = useParams<{ id: string }>();
   const navigate = useNavigate();
+  const [params, setParams] = useSearchParams();
   const project = projects.find(p => p.id === id);
 
-  const [sortBy, setSortBy] = useState<SortOption>('booklet');
-  const [activeChapter, setActiveChapter] = useState('הכל');
-  const [activeTopic, setActiveTopic] = useState('הכל');
+  // המצב נשמר בכתובת: מדד נבחר, תצוגה, פרקים ונושאים. "העתקת קישור" פותחת את אותו מצב.
+  const selected = params.get('i');
+  const view = params.get('v') === 'log' ? 'log' : 'map';
+  const chapters = params.get('ch')?.split('|').filter(Boolean) ?? [];
+  const topics = params.get('t')?.split('|').filter(Boolean) ?? [];
   const [search, setSearch] = useState('');
-  const [selectedIndicator, setSelectedIndicator] = useState<string | null>(null);
-  const [activeTab, setActiveTab] = useState<'indicators' | 'timeline'>('indicators');
+  const [sort, setSort] = useState<Sort>('booklet');
+  const [pane, setPane] = useState<Pane>(selected ? 'detail' : 'rose');
+  const [newOpen, setNewOpen] = useState(false);
+  const [confirmDelete, setConfirmDelete] = useState(false);
 
-  const score = project ? calcFinalScore(project) : 0;
-  const evaluated = project ? Object.values(project.indicators).filter(d => d.status !== 'not_started').length : 0;
-  const totalIndicators = INDICATORS.length;
-  const progressPct = Math.round((evaluated / totalIndicators) * 100);
-
-  const filteredIndicators = useMemo(() => {
-    if (!project) return [];
-    let list = [...INDICATORS];
-
-    if (activeChapter !== 'הכל') list = list.filter(i => i.chapter === activeChapter);
-    if (activeTopic !== 'הכל') list = list.filter(i => i.topic === activeTopic);
-    if (search) {
-      const s = search.trim();
-      const num = parseInt(s, 10);
-      list = list.filter(i => {
-        if (!isNaN(num) && parseInt(i.id.replace(/\D/g, ''), 10) === num) return true;
-        return i.titleHe.includes(s) || i.topic.includes(s) || i.chapter.includes(s) || i.guidanceHe.includes(s);
-      });
-    }
-
-    const getScore = (ind: typeof INDICATORS[0]) => project.indicators[ind.id]?.score ?? 0;
-    const getStatus = (ind: typeof INDICATORS[0]) => project.indicators[ind.id]?.status ?? 'not_started';
-    const getUpdated = (ind: typeof INDICATORS[0]) => project.indicators[ind.id]?.lastUpdated ?? '';
-
-    switch (sortBy) {
-      case 'booklet': list.sort((a, b) => INDICATORS.indexOf(a) - INDICATORS.indexOf(b)); break;
-      case 'topic': list.sort((a, b) => a.topic.localeCompare(b.topic, 'he')); break;
-      case 'chapter': list.sort((a, b) => a.chapter.localeCompare(b.chapter, 'he')); break;
-      case 'status': {
-        const order = { completed: 0, in_progress: 1, not_started: 2, not_relevant: 3 };
-        list.sort((a, b) => (order[getStatus(a)] ?? 2) - (order[getStatus(b)] ?? 2));
-        break;
-      }
-      case 'score_desc': list.sort((a, b) => getScore(b) - getScore(a)); break;
-      case 'score_asc': list.sort((a, b) => getScore(a) - getScore(b)); break;
-      case 'chronological': list.sort((a, b) => getUpdated(b).localeCompare(getUpdated(a))); break;
-    }
-
-    return list;
-  }, [activeChapter, activeTopic, search, sortBy, project]);
-
-  const handleSaveIndicator = (indicatorId: string, data: IndicatorData) => {
-    if (!project) return;
-    setProjects(prev =>
-      prev.map(p =>
-        p.id === project.id
-          ? { ...p, indicators: { ...p.indicators, [indicatorId]: data } }
-          : p
-      )
-    );
-    setSelectedIndicator(null);
+  const patch = (next: Record<string, string | null>) => {
+    const p = new URLSearchParams(params);
+    Object.entries(next).forEach(([k, v]) => (v ? p.set(k, v) : p.delete(k)));
+    setParams(p, { replace: true });
   };
+  const select = (iid: string | null) => { patch({ i: iid }); if (iid) setPane('detail'); };
 
-  const selectedInd = selectedIndicator ? INDICATORS.find(i => i.id === selectedIndicator) : null;
+  const visibleTopics = TOPICS.filter(t => !chapters.length || chapters.includes(INDICATORS.find(i => i.topic === t)!.chapter));
+  const filtered = useMemo(() => {
+    if (!project) return [];
+    const q = search.trim();
+    const num = /^\d+$/.test(q) ? parseInt(q, 10) : NaN;
+    let list = INDICATORS.filter(i =>
+      (!chapters.length || chapters.includes(i.chapter)) &&
+      (!topics.length || topics.includes(i.topic)) &&
+      (!q || INDICATORS.indexOf(i) + 1 === num || matchesHebrew(`${i.titleHe} ${i.topic} ${i.guidanceHe}`, q)));
+    const d = (i: typeof INDICATORS[0]) => project.indicators[i.id];
+    const order = { completed: 0, in_progress: 1, not_started: 2, not_relevant: 3 } as const;
+    if (sort === 'open') list = [...list].sort((a, b) => (b.maxScore - (d(b)?.score ?? 0)) * (d(b)?.status === 'not_relevant' ? 0 : 1) - (a.maxScore - (d(a)?.score ?? 0)) * (d(a)?.status === 'not_relevant' ? 0 : 1));
+    if (sort === 'score_desc') list = [...list].sort((a, b) => (d(b)?.score ?? 0) - (d(a)?.score ?? 0));
+    if (sort === 'status') list = [...list].sort((a, b) => order[d(a)?.status ?? 'not_started'] - order[d(b)?.status ?? 'not_started']);
+    if (sort === 'recent') list = [...list].sort((a, b) => (d(b)?.lastUpdated ?? '').localeCompare(d(a)?.lastUpdated ?? ''));
+    return list;
+  }, [project, chapters, topics, search, sort]);
+  const highlight = useMemo(() => (chapters.length || topics.length || search.trim() ? new Set(filtered.map(i => i.id)) : null), [filtered, chapters.length, topics.length, search]);
+
+  const savedLabel = saved.error ? 'לא נשמר. הדפדפן חוסם שמירה.' : saved.at ? `נשמר ${hhmm(saved.at)}` : 'נשמר אוטומטית';
+
+  const menuItems: MenuItem[] = project ? [
+    { label: 'ייצוא דוח Word', hint: 'לצירוף לתיק התכנון', onSelect: () => downloadReport(project) },
+    { label: 'פרויקט חדש', onSelect: () => setNewOpen(true) },
+    { label: 'מחיקת הפרויקט', hint: project.name, onSelect: () => setConfirmDelete(true) },
+  ] : [];
 
   if (!project) {
     return (
-      <div className="min-h-screen bg-background flex items-center justify-center">
-        <div className="text-center animate-fade-in">
-          <p className="text-2xl text-muted-foreground mb-6">פרויקט לא נמצא</p>
-          <Button onClick={() => navigate('/')} className="text-base">חזרה לפרויקטים</Button>
-        </div>
+      <div className="app-shell">
+        <TopBar tabs={[{ label: 'בית', to: '/', current: false }]} menuItems={[]} />
+        <main className="empty" style={{ placeSelf: 'center', textAlign: 'center' }}>
+          <p><b>הפרויקט לא נמצא בדפדפן הזה.</b></p>
+          <p>פרויקטים נשמרים בדפדפן שבו נוצרו. אפשר לפתוח פרויקט אחר או ליצור חדש.</p>
+          <p><Link className="press btn btn-solid" to="/">לכל הפרויקטים</Link></p>
+        </main>
       </div>
     );
   }
 
+  const update = (iid: string, data: IndicatorData) =>
+    setProjects(prev => prev.map(p => (p.id === project.id ? { ...p, indicators: { ...p.indicators, [iid]: data } } : p)));
+  const create = (data: NewProjectData) => {
+    const p: Project = { id: crypto.randomUUID(), ...data, createdAt: new Date().toISOString(), indicators: {} };
+    setProjects(prev => [...prev, p]);
+    setNewOpen(false);
+    navigate(`/project/${p.id}`);
+  };
+
+  const score = calcFinalScore(project);
+  const max = achievableMax(project);
+  const n = countEvaluated(project);
+  const ind = selected ? INDICATORS.find(i => i.id === selected) : null;
+  const base = `/project/${project.id}`;
+
   return (
-    <div className="min-h-screen bg-background">
-      {/* ───── Header ───── */}
-      <header className="sticky top-0 z-40 bg-background/90 backdrop-blur-lg border-b border-border">
-        <div className="max-w-7xl mx-auto px-5 py-4 flex items-center justify-between gap-4">
-          <div className="flex items-center gap-4">
-            <Button variant="ghost" size="sm" onClick={() => navigate('/')} className="gap-2 text-muted-foreground hover:text-foreground text-sm">
-              <ArrowRight className="w-4 h-4" />
-              <span className="hidden sm:inline">כל הפרויקטים</span>
-            </Button>
-            <div className="hidden sm:flex items-center gap-3">
-              <div className="w-px h-8 bg-border" />
-              <div>
-                <h2 className="text-base font-bold text-foreground leading-tight">{project.name}</h2>
-                <p className="text-sm text-muted-foreground">{project.city} · {project.year}</p>
-              </div>
-            </div>
-          </div>
+    <div className="app-shell">
+      <TopBar
+        tabs={[
+          { label: 'בית', to: '/', current: false },
+          { label: 'שושנת המדדים', to: base, current: view === 'map' },
+          { label: 'יומן שינויים', to: `${base}?v=log`, current: view === 'log' },
+        ]}
+        search={{ value: search, onChange: setSearch, placeholder: 'חיפוש מדד: שם, נושא או מספר' }}
+        menuItems={menuItems}
+        status={savedLabel}
+      />
 
-          <div className="flex items-center gap-4">
-            {/* Score pill with gradient border */}
-            <div className="gradient-border flex items-baseline gap-1.5 rounded-xl px-4 py-2 bg-card">
-              <span className="font-mono-label text-3xl font-bold text-primary">{score}</span>
-              <span className="text-sm text-muted-foreground">/{TOTAL_MAX_SCORE}</span>
-            </div>
-            <Button
-              onClick={() => { downloadReport(project); }}
-              variant="outline"
-              size="sm"
-              className="gap-2 text-sm shadow-sm"
-            >
-              <Download className="w-4 h-4" />
-              <span className="hidden sm:inline">ייצא דוח</span>
-            </Button>
-            <ThemeToggle />
+      <div className="dash">
+        {/* ── כותרת הפרויקט ── */}
+        <header className="dash-head">
+          <div style={{ minWidth: 0 }}>
+            <p className="crumbs"><Link to="/">פרויקטים</Link> › {project.city}</p>
+            <h1 className="dash-title">{project.name}{isDemo(project) && <span className="demo-tag">לדוגמה, ניקוד להמחשה</span>}</h1>
+            <p className="src">{[project.city, project.compound, project.lot, String(project.year), `${project.manager}, ${project.role}`].filter(Boolean).join(' · ')}</p>
           </div>
+          <dl className="kpis">
+            <div><dt className="lbl">ציון</dt><dd><bdi className="num kpi-big">{score}</bdi><span className="src"> / {TOTAL_MAX_SCORE}</span></dd></div>
+            <div><dt className="lbl">מתוך האפשרי</dt><dd><bdi className="num kpi">{max ? Math.round((score / max) * 100) : 0}%</bdi></dd></div>
+            <div><dt className="lbl">הוערכו</dt><dd><bdi className="num kpi">{n}/{INDICATORS.length}</bdi></dd></div>
+            <div className="kpi-save"><dt className="lbl">שמירה</dt><dd className="src" aria-live="polite">{savedLabel}</dd></div>
+          </dl>
+          <button className="press btn" onClick={() => downloadReport(project)}>ייצוא דוח Word</button>
+        </header>
+
+        {/* נייד: לשונית אחת בכל פעם, במקום גלילה ארוכה */}
+        <div className="panes-switch" role="tablist" aria-label="תצוגה">
+          {([['rose', 'שושנה'], ['list', 'רשימה'], ['detail', ind ? 'המדד' : 'הערכה']] as [Pane, string][]).map(([k, l]) => (
+            <button key={k} role="tab" className="chip" aria-pressed={pane === k} aria-selected={pane === k} onClick={() => setPane(k)}>{l}</button>
+          ))}
         </div>
 
-        {/* Progress bar with gradient */}
-        <div className="h-1 bg-muted">
-          <div
-            className="h-full transition-all duration-700 ease-out rounded-l-full"
-            style={{
-              width: `${progressPct}%`,
-              background: 'var(--gradient-hero)',
-            }}
-          />
-        </div>
-      </header>
-
-      <main className="max-w-7xl mx-auto px-5 py-10 space-y-10">
-        {/* ───── Tabs ───── */}
-        <nav className="flex gap-1.5 bg-muted/50 p-1.5 rounded-xl w-fit">
-          <button
-            onClick={() => setActiveTab('indicators')}
-            className={`flex items-center gap-2 px-6 py-2.5 rounded-lg text-sm font-semibold transition-all ${
-              activeTab === 'indicators'
-                ? 'bg-card text-foreground shadow-sm'
-                : 'text-muted-foreground hover:text-foreground'
-            }`}
-          >
-            <FileText className="w-4 h-4" />
-            מדדים
-            <span className="font-mono-label text-xs text-muted-foreground">{evaluated}/{totalIndicators}</span>
-          </button>
-          <button
-            onClick={() => setActiveTab('timeline')}
-            className={`flex items-center gap-2 px-6 py-2.5 rounded-lg text-sm font-semibold transition-all ${
-              activeTab === 'timeline'
-                ? 'bg-card text-foreground shadow-sm'
-                : 'text-muted-foreground hover:text-foreground'
-            }`}
-          >
-            <Clock className="w-4 h-4" />
-            טיימליין
-          </button>
-        </nav>
-
-        {activeTab === 'indicators' ? (
-          <div className="space-y-10 animate-fade-in">
-            {/* Empty state */}
-            {evaluated === 0 && (
-              <div className="gradient-border rounded-xl p-6 bg-accent text-center">
-                <p className="text-base text-accent-foreground font-medium">
-                  🚀 טרם הוערך אף מדד — לחץ על כל כרטיס להתחיל בהערכה
-                </p>
+        <main className="dash-main" data-pane={pane}>
+          {/* ── ימין: סינון ורשימה ── */}
+          <section className="card dash-list" aria-label="רשימת המדדים">
+            <div className="dash-filters">
+              <Selector label="פרק" options={CHAPTERS} value={chapters} colorOf={c => CHAPTER_HEX[c]}
+                countOf={c => INDICATORS.filter(i => i.chapter === c).length}
+                onChange={v => patch({ ch: v.join('|') || null, t: null })} />
+              <Selector label="נושא" options={visibleTopics} value={topics.filter(t => visibleTopics.includes(t as typeof TOPICS[number]))}
+                onChange={v => patch({ t: v.join('|') || null })} />
+              <div className="list-meta">
+                <span className="src"><bdi className="num" style={{ color: '#1A1A18' }}>{filtered.length}</bdi> מדדים{highlight ? ' מסוננים' : ''}</span>
+                <label className="src">מיון{' '}
+                  <select className="field sort" value={sort} onChange={e => setSort(e.target.value as Sort)}>
+                    {SORTS.map(s => <option key={s.v} value={s.v}>{s.label}</option>)}
+                  </select>
+                </label>
               </div>
+            </div>
+            {filtered.length === 0 ? (
+              <div className="empty"><p><b>אין מדד שמתאים.</b></p><p>נסו מילה אחרת, או לחצו "הכול" כדי לאפס את הסינון.</p></div>
+            ) : (
+              <ul className="scroll-in ind-list">
+                {filtered.map(i => {
+                  const d = project.indicators[i.id];
+                  const st = d?.status ?? 'not_started';
+                  const s = d?.score ?? 0;
+                  const c = CHAPTER_HEX[i.chapter];
+                  return (
+                    <li key={i.id}>
+                      <button className="ind-row" aria-current={selected === i.id ? 'true' : undefined} onClick={() => select(i.id)}>
+                        <bdi className="num ind-n" style={{ color: c }}>{String(INDICATORS.indexOf(i) + 1).padStart(2, '0')}</bdi>
+                        <span className="ind-row-title">{i.titleHe}</span>
+                        <span className="ind-row-bar" aria-hidden="true" title={STATUS_LABELS[st]}>
+                          {Array.from({ length: i.maxScore }, (_, k) => (
+                            <span key={k} style={{ background: st !== 'not_started' && st !== 'not_relevant' && k < s ? c : undefined }} className={st === 'not_relevant' ? 'nr' : ''} />
+                          ))}
+                        </span>
+                        <bdi className="num ind-row-score">{st === 'not_started' ? '—' : st === 'not_relevant' ? 'לא רל׳' : `${s}/${i.maxScore}`}</bdi>
+                      </button>
+                    </li>
+                  );
+                })}
+              </ul>
             )}
+          </section>
 
-            {/* ───── Chapter Scores ───── */}
-            <section className="section-frame">
-              <div className="section-frame-header">
-                <div>
-                  <h3 className="section-title">סיכום לפי פרקים</h3>
-                  <p className="section-rationale">תמונת מצב מהירה של ההתקדמות בכל אחד משלושת פרקי החוברת — תשתית, מרחב ומשאבים</p>
-                </div>
+          {/* ── מרכז: מוקד אחד ── */}
+          <section className="dash-focus" aria-label={view === 'log' ? 'יומן שינויים' : 'שושנת המדדים'}>
+            {view === 'log' ? (
+              <div className="card" style={{ height: '100%', display: 'flex', flexDirection: 'column', minHeight: 0 }}>
+                <Timeline project={project} onSelect={select} />
               </div>
-              <CategoryScoreStrip project={project} />
-            </section>
+            ) : (
+              <>
+                <div className="rose-wrap">
+                  <Rose project={project} selected={selected} highlight={highlight} onSelect={select} />
+                </div>
+                <p className="rose-legend src">
+                  כל פלח הוא <b>מדד</b>. רוחב הפלח הוא <b>המשקל</b> שלו, והשטח הצבוע הוא <b>הציון</b>. פסים: לא רלוונטי.
+                </p>
+                <div className="chapter-strip">
+                  {CHAPTERS.map(ch => {
+                    const on = chapters.length === 1 && chapters[0] === ch;
+                    return (
+                      <button key={ch} className="press chapter-mini" aria-pressed={on} onClick={() => patch({ ch: on ? null : ch, t: null })}
+                        style={{ borderTop: `3px solid ${CHAPTER_HEX[ch]}`, ...(on ? { background: '#fff', color: '#1A1A18', borderColor: CHAPTER_HEX[ch] } : {}) }}>
+                        <span className="lbl" style={{ color: CHAPTER_HEX[ch] }}>{CHAPTER_META[ch].letter} · {ch}</span>
+                        <span><bdi className="num" style={{ fontSize: 20 }}>{chapterEarnedScore(project, ch)}</bdi><span className="src"> / {chapterMaxScore(ch)}</span></span>
+                        <span className="mini-bar"><span style={{ width: `${chapterPctOfMax(project, ch)}%`, background: CHAPTER_HEX[ch] }} /></span>
+                      </button>
+                    );
+                  })}
+                </div>
+              </>
+            )}
+          </section>
 
-            {/* ───── Filters ───── */}
-            <section className="section-frame">
-              <div className="section-frame-header">
-                <div>
-                  <h3 className="section-title">סינון וחיפוש</h3>
-                  <p className="section-rationale">מצא מדד ספציפי לפי שם, מספר, נושא או פרק — או מיין לפי סטטוס וניקוד</p>
-                </div>
-              </div>
-              <FilterBar
-                sortBy={sortBy} onSortChange={setSortBy}
-                activeChapter={activeChapter} onChapterChange={setActiveChapter}
-                activeTopic={activeTopic} onTopicChange={setActiveTopic}
-                search={search} onSearchChange={setSearch}
-              />
-            </section>
-
-            {/* ───── Indicator Grid ───── */}
-            <section className="section-frame">
-              <div className="section-frame-header">
-                <div>
-                  <h3 className="section-title">
-                    רשימת מדדים
-                    <span className="text-sm font-normal text-muted-foreground mr-2">
-                      ({filteredIndicators.length} תוצאות)
-                    </span>
-                  </h3>
-                  <p className="section-rationale">כל 44 המדדים מהחוברת — לחץ על כרטיס כדי לעדכן ניקוד, סטטוס והערות</p>
-                </div>
-              </div>
-              {filteredIndicators.length === 0 ? (
-                <div className="text-center py-16 text-muted-foreground surface-inset">
-                  <p className="text-base">לא נמצאו מדדים לסינון הנבחר</p>
-                </div>
-              ) : (
-                <div className="grid grid-cols-1 md:grid-cols-2 xl:grid-cols-3 gap-5">
-                  {filteredIndicators.map((ind, i) => (
-                    <div key={ind.id} className="animate-fade-in" style={{ animationDelay: `${Math.min(i * 30, 300)}ms` }}>
-                      <IndicatorCard
-                        indicator={ind}
-                        data={project.indicators[ind.id]}
-                        index={INDICATORS.indexOf(ind)}
-                        onClick={() => setSelectedIndicator(ind.id)}
-                      />
-                    </div>
-                  ))}
-                </div>
-              )}
-            </section>
-          </div>
-        ) : (
-          <div className="animate-fade-in">
-            <div className="section-frame">
-              <div className="section-frame-header">
-                <div>
-                  <h3 className="section-title">טיימליין שינויים</h3>
-                  <p className="section-rationale">מעקב כרונולוגי אחר כל עדכון ציון — שקיפות מלאה על תהליך ההערכה</p>
-                </div>
-              </div>
-            </div>
-            <Timeline project={project} />
-          </div>
-        )}
-      </main>
-
-      {/* Mobile sticky export */}
-      <div className="fixed bottom-4 left-4 right-4 sm:hidden z-50">
-        <Button
-          onClick={() => { downloadReport(project); }}
-          className="w-full gap-2 shadow-lg text-base h-12"
-          size="lg"
-        >
-          <Download className="w-5 h-5" />
-          ייצא דוח
-        </Button>
+          {/* ── שמאל: פרטים בטור צד ── */}
+          <aside className="card dash-aside scroll-in">
+            {ind ? (
+              <IndicatorPanel key={ind.id} indicator={ind} data={project.indicators[ind.id]} onChange={d => update(ind.id, d)} onNav={iid => select(iid)} savedLabel={savedLabel} />
+            ) : (
+              <EvaluationPanel project={project} onSelect={select} />
+            )}
+          </aside>
+        </main>
       </div>
 
-      <IndicatorModal
-        open={!!selectedIndicator}
-        indicator={selectedInd ?? null}
-        data={selectedIndicator ? project.indicators[selectedIndicator] : undefined}
-        onClose={() => setSelectedIndicator(null)}
-        onSave={handleSaveIndicator}
-      />
+      <NewProjectModal open={newOpen} onClose={() => setNewOpen(false)} onCreate={create} />
+      <AlertDialog open={confirmDelete} onOpenChange={setConfirmDelete}>
+        <AlertDialogContent dir="rtl">
+          <AlertDialogHeader className="text-right">
+            <AlertDialogTitle>למחוק את "{project.name}"?</AlertDialogTitle>
+            <AlertDialogDescription>כל הניקוד, ההערות והיומן יימחקו מהדפדפן. אי אפשר לשחזר. כדאי לייצא דוח לפני.</AlertDialogDescription>
+          </AlertDialogHeader>
+          <AlertDialogFooter className="gap-2">
+            <AlertDialogCancel className="press">ביטול</AlertDialogCancel>
+            <AlertDialogAction className="press" style={{ background: '#A32D2D', color: '#fff' }}
+              onClick={() => { setProjects(prev => prev.filter(p => p.id !== project.id)); navigate('/'); }}>מחיקה</AlertDialogAction>
+          </AlertDialogFooter>
+        </AlertDialogContent>
+      </AlertDialog>
     </div>
   );
-};
-
-export default DashboardView;
+}
