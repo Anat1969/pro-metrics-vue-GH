@@ -5,6 +5,7 @@ import { HashRouter, Routes, Route } from 'react-router-dom';
 import { type Project } from '@/data/indicators';
 import HomeView from './pages/HomeView';
 import DashboardView from './pages/DashboardView';
+import PlansView from './pages/PlansView';
 import NotFound from './pages/NotFound';
 
 const STORAGE_KEY = 'shchuna360_projects';
@@ -44,6 +45,7 @@ const App = () => {
       <HashRouter>
         <Routes>
           <Route path="/" element={<HomeView {...props} />} />
+          <Route path="/plans" element={<PlansView {...props} />} />
           <Route path="/project/:id" element={<DashboardView {...props} />} />
           <Route path="*" element={<NotFound />} />
         </Routes>

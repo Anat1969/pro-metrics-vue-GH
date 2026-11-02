@@ -1,29 +1,25 @@
-import React, { useMemo, useState } from 'react';
+import React, { useState } from 'react';
 import { useNavigate } from 'react-router-dom';
-import { INDICATORS, CHAPTERS, CHAPTER_HEX, CHAPTER_META, TOTAL_MAX_SCORE, type Project } from '@/data/indicators';
-import { calcFinalScore, chapterEarnedScore, chapterMaxScore, countEvaluated } from '@/lib/scoring';
+import { INDICATORS, TOTAL_MAX_SCORE, type Project } from '@/data/indicators';
+import { calcFinalScore, countEvaluated } from '@/lib/scoring';
 import { makeDemoProject, isDemo } from '@/lib/demo';
+import { GATES, MEASURE_APP, VERDICT_HE, type Verdict } from '@/lib/plans';
+import { usePlans, type PlanRow } from '@/lib/usePlans';
 import TopBar from '@/components/TopBar';
-import IsoRose from '@/components/IsoRose';
+import IsoGate, { VERDICT_COLOR } from '@/components/IsoGate';
 import Rich from '@/components/Rich';
 import NewProjectModal, { type NewProjectData } from '@/components/NewProjectModal';
 import type { AppProps } from '@/App';
 import type { MenuItem } from '@/components/AIMenu';
 
 const hhmm = (t: number) => new Date(t).toLocaleTimeString('he-IL', { hour: '2-digit', minute: '2-digit' });
-const PAGES = INDICATORS.map(i => i.page);
-const SPAN = Math.max(...PAGES) - Math.min(...PAGES);
+const TONE: Record<Verdict, string> = { pass: 'tone-solution', evidence: 'tone-warn', fail: 'tone-problem' };
 
 export default function HomeView({ projects, setProjects, saved }: AppProps) {
   const navigate = useNavigate();
   const [modalOpen, setModalOpen] = useState(false);
-
-  // התצוגה בתלת־ממד: הפרויקט האחרון, או פרויקט לדוגמה כשאין עדיין.
-  const preview = useMemo(() => {
-    const sorted = [...projects].sort((a, b) => b.createdAt.localeCompare(a.createdAt));
-    return sorted[0] ?? makeDemoProject();
-  }, [projects]);
-  const previewIsSaved = projects.some(p => p.id === preview.id);
+  const [hover, setHover] = useState<PlanRow | null>(null);
+  const { rows, targets, live, ready } = usePlans();
 
   const create = (data: NewProjectData) => {
     const p: Project = { id: crypto.randomUUID(), ...data, createdAt: new Date().toISOString(), indicators: {} };
@@ -40,66 +36,87 @@ export default function HomeView({ projects, setProjects, saved }: AppProps) {
   };
 
   const menuItems: MenuItem[] = [
-    { label: 'פרויקט חדש', hint: 'שכונה, מתחם או מגרש', onSelect: () => setModalOpen(true) },
-    { label: 'פרויקט לדוגמה', hint: 'אשדוד, ניקוד להמחשה', onSelect: openDemo },
+    { label: 'בדיקה ידנית חדשה', hint: 'לתוכנית שעוד לא במערכת', onSelect: () => setModalOpen(true) },
+    { label: 'בדיקה לדוגמה', hint: 'אשדוד, ניקוד להמחשה', onSelect: openDemo },
   ];
+
+  const upcoming = rows.filter(r => r.gate !== 'after');
+  const n = (v: Verdict) => upcoming.filter(r => r.r.verdict === v).length;
+  const nearest = [...upcoming].filter(r => r.r.verdict !== 'pass').sort((a, b) => a.r.need - b.r.need)[0];
 
   return (
     <div className="app-shell">
       <TopBar
-        tabs={[{ label: 'בית', to: '/', current: true }, ...projects.slice(-3).map(p => ({ label: p.name, to: `/project/${p.id}`, current: false }))]}
+        tabs={[{ label: 'בית', to: '/', current: true }, { label: 'תוכניות בעיר', to: '/plans', current: false }, ...projects.slice(-2).map(p => ({ label: p.name, to: `/project/${p.id}`, current: false }))]}
         menuItems={menuItems}
         status={saved.at ? `נשמר ${hhmm(saved.at)}` : ''}
       />
 
       <main className="home">
-        {/* ── טור ימין: מה זה, למה, ומה עושים ── */}
+        {/* ── טור ימין: השאלה, התשובה במספרים, ומה עושים ── */}
         <section className="home-text">
-          <p className="lbl rise">כלי הערכה לתכנון שכונה בת־קיימא · <b style={{ color: '#1A1A18' }}>עיריית אשדוד</b> <span className="latin">Ashdod Municipality</span></p>
-          <h1 className="home-title rise" style={{ animationDelay: '60ms' }}>שכונה <bdi className="num" style={{ fontWeight: 600 }}>360°</bdi></h1>
-          <Rich as="p" className="home-insight rise">{`**${INDICATORS.length}** מדדים, **${TOTAL_MAX_SCORE}** נקודות, ומבט אחד על כל השכונה.`}</Rich>
+          <p className="lbl rise"><b style={{ color: '#1A1A18' }}>עיריית אשדוד</b> <span className="latin">Ashdod Municipality</span> · בקרת תוכניות התחדשות עירונית</p>
+          <h1 className="home-title rise" style={{ animationDelay: '60ms' }}>שער היעדים</h1>
+          <Rich as="p" className="home-insight rise">{'**האם התוכנית עומדת ביעד, לפני שמאשרים?**'}</Rich>
           <p className="home-explain rise" style={{ animationDelay: '120ms' }}>
-            מזינים ניקוד לכל מדד מהחוברת.
+            כל תוכנית התחדשות נבדקת מול יעד השלב שלה: <b>אישור תב"ע</b> או <b>אישור תוכנית בינוי</b>.
             <br />
-            השושנה מראה מיד איפה השכונה חזקה, ואיפה נשארו נקודות.
+            התשובה אומרת גם <b>מה לדרוש מהיזם</b> לפני האישור.
           </p>
           <div className="home-cta rise" style={{ animationDelay: '160ms' }}>
-            <button className="press btn btn-solid" onClick={() => setModalOpen(true)}>פרויקט חדש</button>
-            <button className="press btn" onClick={openDemo}>פתיחת פרויקט לדוגמה</button>
+            <button className="press btn btn-solid" onClick={() => navigate('/plans')}>לוח התוכניות בעיר</button>
+            <button className="press btn" onClick={() => setModalOpen(true)}>בדיקה ידנית של תוכנית</button>
           </div>
 
-          <div className="home-tones rise" style={{ animationDelay: '200ms' }}>
-            <div className="tone tone-problem"><h4>הבעיה</h4><Rich as="p">{`**${INDICATORS.length}** מדדים פזורים על פני **${SPAN}** עמודי חוברת. קשה לראות תמונה שלמה.`}</Rich></div>
-            <div className="tone tone-solution"><h4>הפתרון</h4><Rich as="p">{'שושנה אחת: כל פלח הוא **מדד**, רוחבו לפי **משקלו**, והשטח הצבוע לפי **הציון**.'}</Rich></div>
-            <div className="tone tone-insight"><h4>התובנה</h4><Rich as="p">{'==הנקודות הפתוחות הן תוכנית העבודה.== הכלי מדרג מה נשאר להשיג.'}</Rich></div>
+          <div className="home-tones rise" style={{ animationDelay: '200ms' }} aria-live="polite">
+            {(['pass', 'evidence', 'fail'] as Verdict[]).map(v => (
+              <button key={v} className={`tone ${TONE[v]} tone-btn`} onClick={() => navigate(`/plans?v=${v}`)}>
+                <span className="tone-num"><bdi className="num" style={{ color: VERDICT_COLOR[v] }}>{ready ? n(v) : '–'}</bdi></span>
+                <h4>{VERDICT_HE[v].label}</h4>
+                <p>{v === 'pass' ? 'אפשר לאשר.' : v === 'evidence' ? 'לדרוש מסמכים.' : 'לדרוש שינוי תכנוני.'}</p>
+              </button>
+            ))}
+          </div>
+          {nearest && (
+            <Rich as="p" className="home-near">{`==הכי קרובה ליעד: ${nearest.plan.title}==, חסרות לה **${nearest.r.need}** נקודות ל${GATES[nearest.gate].label}.`}</Rich>
+          )}
+
+          {/* שתי אפליקציות, שתי שאלות */}
+          <div className="two-apps card">
+            <div>
+              <span className="lbl">כאן</span>
+              <h3>שער היעדים</h3>
+              <Rich as="p">{'שואל **"לאשר עכשיו?"** משווה כל תוכנית ליעד של השלב, ואומר מה לדרוש.'}</Rich>
+            </div>
+            <a href={MEASURE_APP} target="_blank" rel="noreferrer" className="two-apps-other">
+              <span className="lbl">אפליקציה אחות</span>
+              <h3>מכשיר המדידה</h3>
+              <Rich as="p">{'שואל **"כמה התוכנית שווה?"** קורא את מסמכי התוכנית ומנקד כל מדד, עם ציטוט.'}</Rich>
+              <span className="src">shchuna360.vercel.app ←</span>
+            </a>
           </div>
 
           <div className="home-projects card">
             <div className="home-projects-head">
-              <h2 className="panel-title">הפרויקטים</h2>
-              <span className="lbl">נשמרים בדפדפן הזה</span>
+              <h2 className="panel-title">בדיקות ידניות</h2>
+              <span className="lbl">לתוכנית שעוד לא במערכת · בדפדפן הזה</span>
             </div>
             {projects.length === 0 ? (
               <div className="empty">
-                <Rich as="p">{'**עוד אין פרויקטים.** שלושה צעדים, וזה עובד:'}</Rich>
-                <ol className="steps">
-                  <li><b>פרויקט חדש</b><span>עיר, שכונה ושם מנהל. חצי דקה.</span></li>
-                  <li><b>ניקוד לכל מדד</b><span>לחיצה על מספר. השושנה מתמלאת מיד.</span></li>
-                  <li><b>דוח Word</b><span>לצירוף לתיק התכנון ולוועדה.</span></li>
-                </ol>
+                <Rich as="p">{`**אין עדיין בדיקות ידניות.** אפשר לנקד ${INDICATORS.length} מדדים ביד, או לפתוח `}</Rich>
+                <p><button className="press btn" style={{ marginTop: 6 }} onClick={openDemo}>בדיקה לדוגמה</button></p>
               </div>
             ) : (
               <ul className="scroll-in proj-list">
                 {[...projects].reverse().map(p => {
                   const s = calcFinalScore(p);
-                  const n = countEvaluated(p);
                   return (
                     <li key={p.id}>
                       <button className="proj-row" onClick={() => navigate(`/project/${p.id}`)}>
-                        <span className="proj-name"><b>{p.name}</b> <span className="src">{p.city} · <bdi>{p.year}</bdi>{isDemo(p) ? ' · לדוגמה' : ''}</span></span>
+                        <span className="proj-name"><b>{p.name}</b> <span className="src">{p.city}{isDemo(p) ? ' · לדוגמה' : ''}</span></span>
                         <span className="proj-bar" aria-hidden="true"><span style={{ width: `${(s / TOTAL_MAX_SCORE) * 100}%` }} /></span>
                         <span className="proj-score"><bdi className="num">{s}</bdi><span className="src">/{TOTAL_MAX_SCORE}</span></span>
-                        <span className="src proj-n"><bdi className="num" style={{ fontWeight: 500 }}>{n}/{INDICATORS.length}</bdi> מדדים</span>
+                        <span className="src proj-n"><bdi className="num" style={{ fontWeight: 500 }}>{countEvaluated(p)}/{INDICATORS.length}</bdi> מדדים</span>
                       </button>
                     </li>
                   );
@@ -109,37 +126,30 @@ export default function HomeView({ projects, setProjects, saved }: AppProps) {
           </div>
         </section>
 
-        {/* ── טור שמאל: מוקד אחד, השכונה בתלת־ממד, ומקרא ── */}
+        {/* ── טור שמאל: מוקד אחד. העיר מול זכוכית היעד ── */}
         <section className="home-visual">
           <figure className="card blueprint home-iso">
             <div className="home-iso-svg">
-              <IsoRose project={preview} onSelect={id => previewIsSaved ? navigate(`/project/${preview.id}?i=${id}`) : openDemo()} />
+              {ready ? <IsoGate rows={rows} targets={targets} onHover={setHover} onSelect={id => navigate(`/plans?p=${id}`)} /> : <div className="empty"><p>טוען את התוכניות...</p></div>}
             </div>
-            <figcaption>
-              <Rich>{`**${preview.name}**, ${preview.city}${previewIsSaved && !isDemo(preview) ? '' : ' · ניקוד להמחשה'}`}</Rich>
-              <Rich className="src">{' · מבנה לכל מדד. **גובה** הוא הציון, **רוחב** הוא משקל המדד. לחיצה פותחת את המדד.'}</Rich>
+            <figcaption aria-live="polite">
+              {hover ? (
+                <Rich>{`**${hover.plan.title}** · ${GATES[hover.gate].label} · **${hover.r.points}** נקודות מול יעד **${hover.r.target}** · ${VERDICT_HE[hover.r.verdict].label}`}</Rich>
+              ) : (
+                <Rich>{`**${rows.length}** תוכניות התחדשות באשדוד, בשורה לכל שער. **גובה** המבנה הוא הנקודות שהוכחו. **הזכוכית הצהובה** היא היעד. מבנה שעובר אותה עומד ביעד.`}</Rich>
+              )}
             </figcaption>
           </figure>
-
-          <div className="home-chapters">
-            {CHAPTERS.map(ch => {
-              const n = INDICATORS.filter(i => i.chapter === ch).length;
-              const earned = chapterEarnedScore(preview, ch);
-              const max = chapterMaxScore(ch);
-              return (
-                <div key={ch} className="card chapter-card" style={{ borderTop: `3px solid ${CHAPTER_HEX[ch]}` }}>
-                  <span className="lbl">פרק {CHAPTER_META[ch].letter} · {n} מדדים</span>
-                  <h3 style={{ color: CHAPTER_HEX[ch] }}>{ch}</h3>
-                  <p>{CHAPTER_META[ch].question}</p>
-                  <p className="chapter-num"><bdi className="num">{earned}</bdi><span className="src"> / {max} נקודות</span></p>
-                </div>
-              );
-            })}
+          <div className="iso-legend">
+            {(['pass', 'evidence', 'fail'] as Verdict[]).map(v => (
+              <span key={v}><i style={{ background: VERDICT_COLOR[v] }} />{VERDICT_HE[v].label}</span>
+            ))}
+            <span><i className="lg-dash" />התקרה אם יוצגו כל הראיות</span>
+            <span className="src">{live === 'live' ? 'נתונים חיים' : live === 'loading' ? 'מתחבר...' : 'תמונה שמורה'}</span>
           </div>
-
           <footer className="home-foot">
-            <p className="src">בהשראת דיאגרמת השושנה של <b>פלורנס נייטינגייל</b> <span className="latin">Florence Nightingale</span>, <bdi>1858</bdi>: שטח הפלח מספר את הסיפור.</p>
-            <p className="haiku">ארבעים וארבע / קורות אור סביב הכיכר / הצל עוד חסר</p>
+            <p className="src">הניקוד: <b>שכונה 360°</b>, גרסה <bdi>2.0</bdi>, ינואר <bdi>2025</bdi>, המועצה הישראלית לבנייה ירוקה ומשרד הבינוי והשיכון. היעד: דרגת <b>ארד</b>, <bdi>55</bdi> מתוך <bdi>120</bdi>, וניתן לשינוי.</p>
+            <p className="haiku">שער אבן פתוח / קו היעד מעל הגגות / עוד קומה חסרה</p>
           </footer>
         </section>
       </main>
