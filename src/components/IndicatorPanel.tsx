@@ -1,4 +1,5 @@
 import React from 'react';
+import Voice from './Voice';
 import { INDICATORS, CHAPTER_HEX, STATUS_LABELS, type Indicator, type IndicatorData, type IndicatorStatus } from '@/data/indicators';
 
 const STATUSES: IndicatorStatus[] = ['not_started', 'in_progress', 'completed', 'not_relevant'];
@@ -102,6 +103,7 @@ export default function IndicatorPanel({ indicator, data, onChange, onNav, saved
         <textarea className="field ind-notes" value={data?.notes ?? ''} rows={3}
           placeholder="מה נבדק, באיזה מסמך, ומה חסר כדי לקבל ניקוד מלא"
           onChange={e => commit({ notes: e.target.value })} />
+        <Voice value={data?.notes ?? ''} onChange={v => commit({ notes: v })} />
       </label>
 
       {data?.history?.length ? (

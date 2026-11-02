@@ -25,9 +25,9 @@ export default function Selector({ label, options, value, onChange, colorOf, cou
         return (
           <span key={o} style={{ display: 'inline-flex', alignItems: 'center', gap: 2 }}>
             <button type="button" className="chip" aria-pressed={on}
-              style={on && colorOf?.(o) ? { color: colorOf(o) } : undefined}
+              style={on && colorOf?.(o) ? { background: colorOf(o), borderColor: colorOf(o), color: '#fff' } : undefined}
               onClick={() => onChange(on && value.length === 1 ? [] : [o])}>
-              {o}{n !== undefined && <bdi className="num" style={{ fontSize: 11, marginRight: 6, fontWeight: 500, color: '#8A8984' }}>{n}</bdi>}
+              {o}{n !== undefined && <bdi className="num" style={{ fontSize: 11, marginRight: 6, fontWeight: 500, color: on ? '#fff' : '#8A8984' }}>{n}</bdi>}
             </button>
             {!all && !on && <button type="button" className="chip-add" title={`הוספת ${o}`} aria-label={`הוספת ${o}`} onClick={() => onChange([...value, o])}>+</button>}
             {on && value.length > 1 && <button type="button" className="chip-add" title={`הסרת ${o}`} aria-label={`הסרת ${o}`} onClick={() => onChange(value.filter(v => v !== o))}>−</button>}
