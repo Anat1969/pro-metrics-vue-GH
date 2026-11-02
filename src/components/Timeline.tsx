@@ -1,73 +1,43 @@
 import React, { useState } from 'react';
-import { type Project, type HistoryEntry, CHAPTERS, INDICATORS } from '@/data/indicators';
+import { type Project, type HistoryEntry, CHAPTERS, CHAPTER_HEX, INDICATORS } from '@/data/indicators';
+import Selector from './Selector';
 
-interface TimelineProps {
-  project: Project;
-}
-
-const Timeline: React.FC<TimelineProps> = ({ project }) => {
-  const [filterChapter, setFilterChapter] = useState('הכל');
-
-  const allHistory: HistoryEntry[] = [];
-  Object.values(project.indicators).forEach(d => {
-    d.history.forEach(h => allHistory.push(h));
-  });
-
-  allHistory.sort((a, b) => new Date(b.timestamp).getTime() - new Date(a.timestamp).getTime());
-
-  const filtered = filterChapter === 'הכל'
-    ? allHistory
-    : allHistory.filter(h => {
-        const ind = INDICATORS.find(i => i.id === h.indicatorId);
-        return ind?.chapter === filterChapter;
-      });
-
-  const pillClass = (active: boolean) => `pill ${active ? 'pill-active' : ''}`;
+/** יומן השינויים: כל עדכון ציון, מהחדש לישן. */
+export default function Timeline({ project, onSelect }: { project: Project; onSelect: (id: string) => void }) {
+  const [chapters, setChapters] = useState<string[]>([]);
+  const all: HistoryEntry[] = Object.values(project.indicators).flatMap(d => d.history);
+  all.sort((a, b) => new Date(b.timestamp).getTime() - new Date(a.timestamp).getTime());
+  const chapterOf = (id: string) => INDICATORS.find(i => i.id === id)?.chapter ?? '';
+  const list = chapters.length ? all.filter(h => chapters.includes(chapterOf(h.indicatorId))) : all;
 
   return (
-    <div>
-      <div className="flex flex-wrap gap-2 mb-6">
-        <button className={pillClass(filterChapter === 'הכל')} onClick={() => setFilterChapter('הכל')}>הכל</button>
-        {CHAPTERS.map(ch => (
-          <button key={ch} className={pillClass(filterChapter === ch)} onClick={() => setFilterChapter(ch)}>{ch}</button>
-        ))}
+    <div className="timeline">
+      <div className="timeline-head">
+        <h2 className="panel-title">יומן שינויים</h2>
+        <span className="src">כל עדכון ציון, מהחדש לישן. <bdi>{list.length}</bdi> רשומות.</span>
       </div>
-
-      {filtered.length === 0 ? (
-        <div className="text-center py-16 text-muted-foreground surface-inset">
-          <p>אין רשומות בטיימליין עדיין</p>
-        </div>
+      <Selector label="פרק" options={CHAPTERS} value={chapters} onChange={setChapters} colorOf={c => CHAPTER_HEX[c]} />
+      {list.length === 0 ? (
+        <div className="empty"><p><b>היומן ריק.</b></p><p>כל ניקוד שתזינו למדד יירשם כאן, עם התאריך והשעה.</p></div>
       ) : (
-        <div className="space-y-3">
-          {filtered.map((h, i) => {
-            const ind = INDICATORS.find(ind => ind.id === h.indicatorId);
-            const maxScore = ind?.maxScore ?? 0;
+        <ol className="scroll-in tl-list">
+          {list.map((h, i) => {
+            const ind = INDICATORS.find(x => x.id === h.indicatorId);
+            const ch = chapterOf(h.indicatorId);
+            const up = h.score >= h.oldScore;
             return (
-              <div
-                key={i}
-                className="card-elevated p-4 flex items-start gap-4 animate-slide-in-right"
-                style={{ animationDelay: `${Math.min(i * 40, 400)}ms` }}
-              >
-                <div className="flex-shrink-0 w-1 self-stretch rounded-full bg-primary" />
-                <div className="flex-1 min-w-0">
-                  <h4 className="text-sm font-semibold text-foreground">{h.indicatorTitle}</h4>
-                  <div className="flex items-center gap-2 mt-1.5">
-                    <span className="font-mono-label text-xs text-muted-foreground">{h.oldScore}/{maxScore}</span>
-                    <span className="text-primary text-xs">←</span>
-                    <span className="font-mono-label text-xs text-primary font-bold">{h.score}/{maxScore}</span>
-                  </div>
-                  {h.notes && <p className="text-xs text-muted-foreground mt-1.5">{h.notes}</p>}
-                </div>
-                <span className="text-[10px] text-muted-foreground whitespace-nowrap font-mono-label">
-                  {new Date(h.timestamp).toLocaleString('he-IL')}
-                </span>
-              </div>
+              <li key={i}>
+                <button className="tl-row" onClick={() => onSelect(h.indicatorId)}>
+                  <span className="ops-dot" style={{ background: CHAPTER_HEX[ch] }} aria-hidden="true" />
+                  <span className="tl-title">{h.indicatorTitle}{h.notes ? <span className="src"> · {h.notes}</span> : null}</span>
+                  <bdi className="num" style={{ color: up ? '#1D7A55' : '#A32D2D' }}>{h.oldScore} → {h.score}<span className="src">/{ind?.maxScore}</span></bdi>
+                  <span className="src tl-date">{new Date(h.timestamp).toLocaleString('he-IL', { dateStyle: 'short', timeStyle: 'short' })}</span>
+                </button>
+              </li>
             );
           })}
-        </div>
+        </ol>
       )}
     </div>
   );
-};
-
-export default Timeline;
+}

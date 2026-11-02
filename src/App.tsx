@@ -1,44 +1,54 @@
-import { useState, useEffect } from 'react';
-import { Toaster } from "@/components/ui/toaster";
-import { Toaster as Sonner } from "@/components/ui/sonner";
-import { TooltipProvider } from "@/components/ui/tooltip";
-import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
-import { BrowserRouter, Routes, Route } from "react-router-dom";
+import { useState, useEffect, useRef } from 'react';
+import { Toaster as Sonner } from '@/components/ui/sonner';
+import { TooltipProvider } from '@/components/ui/tooltip';
+import { HashRouter, Routes, Route } from 'react-router-dom';
 import { type Project } from '@/data/indicators';
-import ProjectsView from "./pages/ProjectsView";
-import DashboardView from "./pages/DashboardView";
-import NotFound from "./pages/NotFound";
+import HomeView from './pages/HomeView';
+import DashboardView from './pages/DashboardView';
+import NotFound from './pages/NotFound';
 
 const STORAGE_KEY = 'shchuna360_projects';
 
-const queryClient = new QueryClient();
+export type SaveInfo = { at: number | null; error: boolean };
+export interface AppProps {
+  projects: Project[];
+  setProjects: React.Dispatch<React.SetStateAction<Project[]>>;
+  saved: SaveInfo;
+}
 
 const App = () => {
   const [projects, setProjects] = useState<Project[]>(() => {
     try {
-      const saved = localStorage.getItem(STORAGE_KEY);
-      return saved ? JSON.parse(saved) : [];
+      const raw = localStorage.getItem(STORAGE_KEY);
+      return raw ? JSON.parse(raw) : [];
     } catch { return []; }
   });
+  const [saved, setSaved] = useState<SaveInfo>({ at: null, error: false });
+  const first = useRef(true);
 
+  // כל שינוי נשמר מיד, עם חיווי "נשמר" בכפתור הלוגו ובכותרת הפרויקט.
   useEffect(() => {
-    localStorage.setItem(STORAGE_KEY, JSON.stringify(projects));
+    if (first.current) { first.current = false; return; }
+    try {
+      localStorage.setItem(STORAGE_KEY, JSON.stringify(projects));
+      setSaved({ at: Date.now(), error: false });
+    } catch {
+      setSaved(s => ({ ...s, error: true }));
+    }
   }, [projects]);
 
+  const props = { projects, setProjects, saved };
   return (
-    <QueryClientProvider client={queryClient}>
-      <TooltipProvider>
-        <Toaster />
-        <Sonner />
-        <BrowserRouter>
-          <Routes>
-            <Route path="/" element={<ProjectsView projects={projects} setProjects={setProjects} />} />
-            <Route path="/project/:id" element={<DashboardView projects={projects} setProjects={setProjects} />} />
-            <Route path="*" element={<NotFound />} />
-          </Routes>
-        </BrowserRouter>
-      </TooltipProvider>
-    </QueryClientProvider>
+    <TooltipProvider>
+      <Sonner position="bottom-left" />
+      <HashRouter>
+        <Routes>
+          <Route path="/" element={<HomeView {...props} />} />
+          <Route path="/project/:id" element={<DashboardView {...props} />} />
+          <Route path="*" element={<NotFound />} />
+        </Routes>
+      </HashRouter>
+    </TooltipProvider>
   );
 };
 

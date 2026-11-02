@@ -14,9 +14,8 @@ export default {
     },
     extend: {
       fontFamily: {
-        heebo: ['Heebo', 'sans-serif'],
-        rubik: ['Rubik', 'sans-serif'],
-        'dm-mono': ['DM Mono', 'monospace'],
+        sans: ['"IBM Plex Sans Hebrew"', 'system-ui', 'sans-serif'],
+        mono: ['"IBM Plex Mono"', '"IBM Plex Sans Hebrew"', 'monospace'],
       },
       colors: {
         border: "hsl(var(--border))",
@@ -51,55 +50,6 @@ export default {
         card: {
           DEFAULT: "hsl(var(--card))",
           foreground: "hsl(var(--card-foreground))",
-        },
-        sidebar: {
-          DEFAULT: "hsl(var(--sidebar-background))",
-          foreground: "hsl(var(--sidebar-foreground))",
-          primary: "hsl(var(--sidebar-primary))",
-          "primary-foreground": "hsl(var(--sidebar-primary-foreground))",
-          accent: "hsl(var(--sidebar-accent))",
-          "accent-foreground": "hsl(var(--sidebar-accent-foreground))",
-          border: "hsl(var(--sidebar-border))",
-          ring: "hsl(var(--sidebar-ring))",
-        },
-        // Semantic colors
-        teal: {
-          DEFAULT: "hsl(var(--teal))",
-          soft: "hsl(var(--teal-soft))",
-        },
-        gold: {
-          DEFAULT: "hsl(var(--gold))",
-          soft: "hsl(var(--gold-soft))",
-        },
-        surface: {
-          DEFAULT: "hsl(var(--surface))",
-          elevated: "hsl(var(--surface-elevated))",
-        },
-        coral: {
-          DEFAULT: "hsl(var(--coral))",
-          soft: "hsl(var(--coral-soft))",
-        },
-        "score-low": "hsl(var(--score-low))",
-        "score-mid": "hsl(var(--score-mid))",
-        "score-high": "hsl(var(--score-high))",
-      },
-      borderRadius: {
-        lg: "var(--radius)",
-        md: "calc(var(--radius) - 2px)",
-        sm: "calc(var(--radius) - 4px)",
-        xl: "calc(var(--radius) + 4px)",
-        "2xl": "calc(var(--radius) + 8px)",
-      },
-      boxShadow: {
-        'sm': 'var(--shadow-sm)',
-        'md': 'var(--shadow-md)',
-        'lg': 'var(--shadow-lg)',
-        'glow': 'var(--shadow-glow)',
-      },
-      keyframes: {
-        "accordion-down": {
-          from: { height: "0" },
-          to: { height: "var(--radix-accordion-content-height)" },
         },
         "accordion-up": {
           from: { height: "var(--radix-accordion-content-height)" },

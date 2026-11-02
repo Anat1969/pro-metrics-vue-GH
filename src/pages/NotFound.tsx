@@ -1,24 +1,15 @@
-import { useLocation } from "react-router-dom";
-import { useEffect } from "react";
+import { Link } from 'react-router-dom';
+import TopBar from '@/components/TopBar';
 
-const NotFound = () => {
-  const location = useLocation();
-
-  useEffect(() => {
-    console.error("404 Error: User attempted to access non-existent route:", location.pathname);
-  }, [location.pathname]);
-
-  return (
-    <div className="flex min-h-screen items-center justify-center bg-muted">
-      <div className="text-center">
-        <h1 className="mb-4 text-4xl font-bold">404</h1>
-        <p className="mb-4 text-xl text-muted-foreground">Oops! Page not found</p>
-        <a href="/" className="text-primary underline hover:text-primary/90">
-          Return to Home
-        </a>
-      </div>
-    </div>
-  );
-};
+const NotFound = () => (
+  <div className="app-shell">
+    <TopBar menuItems={[]} />
+    <main className="empty" style={{ placeSelf: 'center', textAlign: 'center' }}>
+      <p><b>הדף הזה לא קיים.</b></p>
+      <p>ייתכן שהקישור ישן. כל הפרויקטים נמצאים בדף הבית.</p>
+      <p style={{ marginTop: 12 }}><Link className="press btn btn-solid" to="/">לדף הבית</Link></p>
+    </main>
+  </div>
+);
 
 export default NotFound;
