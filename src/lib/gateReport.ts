@@ -1,6 +1,6 @@
 import { Document, Packer, Paragraph, TextRun, Table, TableRow, TableCell, WidthType, AlignmentType, BorderStyle } from 'docx';
 import { saveAs } from 'file-saver';
-import { GATES, GENERAL_GAPS, STAGE_HE, STATUS_HE, VERDICT_HE, sourceHe, type Gate } from './plans';
+import { GATES, GATE_ORDER, GENERAL_GAPS, STAGE_HE, STATUS_HE, VERDICT_HE, sourceHe, developerLetter, type Gate } from './plans';
 import type { PlanRow } from './usePlans';
 
 /** דוח השער כקובץ Word לתיק הוועדה. אותו תוכן כמו הדוח שבמסך. */
@@ -65,6 +65,9 @@ export async function downloadGateReport(row: PlanRow, _targets: Record<Gate, nu
     h('6. להתנות בהיתר ובביצוע (שלב ג\')'),
     ...r.conditions.map(c => p(`${c.n}. ${c.title}: ${c.stageC}`, { size: 18 })),
 
+    h('נספח: מכתב ליזם'),
+    ...developerLetter(plan, gate, r, row.requests).split('\n').map(t => p(t || ' ', { size: 20 })),
+
     h('7. מה חסר'),
     p('כדי שהבדיקה האוטומטית תהיה מלאה:', { bold: true }),
     ...(nowReq.length ? nowReq.slice(0, 6).map(d => p(`• ${d.doc}`)) : [p('אין.')]),
@@ -76,4 +79,32 @@ export async function downloadGateReport(row: PlanRow, _targets: Record<Gate, nu
   const doc = new Document({ sections: [{ properties: { page: { margin: { top: 800, bottom: 800, left: 800, right: 800 } } }, children }] });
   const blob = await Packer.toBlob(doc);
   saveAs(blob, `gate-${plan.plan_number ?? plan.id}-${new Date().toISOString().slice(0, 10)}.docx`);
+}
+
+/** המכתב ליזם בלבד, כקובץ Word לשליחה. */
+export async function downloadLetter(row: PlanRow) {
+  const text = developerLetter(row.plan, row.gate, row.r, row.requests);
+  const doc = new Document({ sections: [{ properties: { page: { margin: { top: 1100, bottom: 1100, left: 1100, right: 1100 } } }, children: text.split('\n').map(t => p(t || ' ', { size: 22 })) }] });
+  saveAs(await Packer.toBlob(doc), `letter-${row.plan.plan_number ?? row.plan.id}.docx`.replace(/\//g, '-'));
+}
+
+/** דוח ועדה מרוכז: כל התוכניות בשער אחד (או בכולם), בטבלה אחת ובשורת דרישות לכל תוכנית. */
+export async function downloadBatch(rows: PlanRow[], gate: Gate | null) {
+  const gates = gate ? [gate] : GATE_ORDER;
+  const children: (Paragraph | Table)[] = [
+    p(`עיריית אשדוד · שער היעדים · דוח ועדה מרוכז · ${new Date().toLocaleDateString('he-IL')}`, { size: 18, color: '777777' }),
+    p(gate ? GATES[gate].label : 'כל השערים', { bold: true, size: 34 }),
+  ];
+  for (const g of gates) {
+    const list = rows.filter(r => r.gate === g).sort((a, b) => b.r.points - a.r.points);
+    if (!list.length) continue;
+    children.push(h(`${GATES[g].label} · ${list.length} תוכניות`));
+    children.push(table(['תוכנית', 'הכרעה', 'מקסימום בשלב', 'הוכח', 'חסר בשלב', 'עתידי', 'דרישות עיקריות'], list.map(r => [
+      `${r.plan.title} ${r.plan.plan_number ? `(${r.plan.plan_number})` : ''}`, VERDICT_HE[r.r.verdict].label, String(r.r.now.max), String(r.r.points), String(r.r.now.open), String(r.r.future.max),
+      r.requests.filter(d => !d.future).slice(0, 3).map(d => d.doc).join('; '),
+    ]), [20, 11, 9, 7, 8, 7, 38]));
+  }
+  children.push(h('מידע כללי שחסר'), ...GENERAL_GAPS.map(gp => p(`• ${gp}`)));
+  const doc = new Document({ sections: [{ properties: { page: { margin: { top: 800, bottom: 800, left: 700, right: 700 } } }, children }] });
+  saveAs(await Packer.toBlob(doc), `committee-${gate ?? 'all'}-${new Date().toISOString().slice(0, 10)}.docx`);
 }

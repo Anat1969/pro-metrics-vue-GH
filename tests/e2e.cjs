@@ -13,8 +13,13 @@ async function page(b, opts = {}) {
   p.on('pageerror', e => p.errors.push(e.message));
   await p.route('**/appofapp-gh.vercel.app/ai-menu.js', r => r.fulfill({ contentType: 'application/javascript', body: fs.readFileSync(`${assets}/ai-menu.js`) }));
   await p.route('**/appofapp-gh.vercel.app/ashdod-logo.png', r => r.fulfill({ contentType: 'image/png', body: fs.readFileSync(`${assets}/ashdod-logo.png`) }));
+  await p.route('**/basemaps.cartocdn.com/**', r => r.fulfill({ status: 200, contentType: 'image/png', body: Buffer.from('iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAQAAAC1HAwCAAAAC0lEQVR42mP8/x8AAwMCAO+ip1sAAAAASUVORK5CYII=', 'base64') }));
   const snap = JSON.parse(fs.readFileSync(__dirname + '/../src/data/plans-snapshot.json', 'utf8'));
-  await p.route('**/rest/v1/plan_projects*', r => r.fulfill({ contentType: 'application/json', body: JSON.stringify(snap.plans) }));
+  await p.route('**/rest/v1/plan_projects*', r => r.fulfill({ contentType: 'application/json', body: JSON.stringify(
+    r.request().url().includes('geojson')
+      ? Object.entries(snap.geo).map(([id, g]) => ({ id, center: g.center, geojson: { type: 'FeatureCollection', features: g.polygons.map(c => ({ type: 'Feature', geometry: { type: 'Polygon', coordinates: c } })) } }))
+      : snap.plans) }));
+  await p.route('**/rest/v1/plan_media*', r => r.fulfill({ contentType: 'application/json', body: JSON.stringify(snap.docs) }));
   await p.route('**/rest/v1/shchuna_plan_scores*', r => r.fulfill({ contentType: 'application/json', body: JSON.stringify(snap.scores) }));
   await p.route('**/rest/v1/quarters*', r => r.fulfill({ contentType: 'application/json', body: JSON.stringify(snap.quarters) }));
   return p;
@@ -72,10 +77,40 @@ const score = p => p.locator('.kpi-big').textContent().then(Number);
   ok((await p.locator('.rp-sec').nth(5).textContent()).length > 200, 'report: stage ג conditions (permit and execution)');
   const [wdl] = await Promise.all([p.waitForEvent('download'), p.getByRole('button', { name: 'הורדת Word' }).click()]);
   ok(fs.readFileSync(await wdl.path()).subarray(0, 2).toString() === 'PK', 'report: Word download is a .docx');
+  ok((await p.locator('.rp-letter').textContent()).includes('הנדון:'), 'report: developer letter ready to send');
+  const [ldl] = await Promise.all([p.waitForEvent('download'), p.getByRole('button', { name: 'המכתב כ-Word' }).click()]);
+  ok(fs.readFileSync(await ldl.path()).subarray(0, 2).toString() === 'PK', 'letter: Word');
   await p.goBack();
   await p.getByRole('button', { name: 'התוכנית הבאה' }).click();
   ok(await p.locator('.petal').count() === 44, 'plan rose drawn from the measurement');
+  // מפה
+  await p.locator('.view-switch').getByRole('button', { name: 'מפה' }).click();
+  await p.waitForTimeout(300);
+  ok(p.url().includes('m=map') && await p.locator('.plan-map path').count() === 18, 'map: 18 plan boundaries from GIS ' + p.url());
+  const vb0 = await p.locator('.plan-map').getAttribute('viewBox');
+  await p.getByRole('button', { name: 'התקרבות' }).click();
+  ok(await p.locator('.plan-map').getAttribute('viewBox') !== vb0, 'map: zoom in button');
+  await p.getByRole('button', { name: 'איפוס המפה' }).click();
+  ok(await p.locator('.plan-map').getAttribute('viewBox') === vb0, 'map: reset');
+  await p.locator('.plan-map path').nth(2).click();
+  ok(p.url().includes('p='), 'map: click selects the plan');
+  await p.locator('.view-switch').getByRole('button', { name: 'לוח השערים' }).click();
+  // מינימום לפרק
+  await p.getByRole('group', { name: 'מינימום לכל פרק' }).getByRole('button', { name: '50%' }).click();
+  await p.locator('.gb-row').first().click();
+  ok(await p.locator('.checks li', { hasText: 'מינימום 50% לכל פרק' }).count() === 1, 'chapter minimum adds an explained check');
+  await p.getByRole('group', { name: 'מינימום לכל פרק' }).getByRole('button', { name: 'כבוי' }).click();
+  ok(await p.locator('.checks li', { hasText: 'לכל פרק' }).count() === 0, 'chapter minimum off by default and can be turned off');
   await p.getByRole('button', { name: 'סגירה' }).click();
+  // דוח ועדה מרוכז
+  await p.getByRole('link', { name: 'דוח ועדה מרוכז' }).click();
+  await p.waitForURL(/#\/batch/);
+  ok(await p.locator('.rp-table tbody tr').count() === 18, 'committee report: all 18 plans');
+  const [bdl] = await Promise.all([p.waitForEvent('download'), p.getByRole('button', { name: 'הורדת Word' }).click()]);
+  ok(fs.readFileSync(await bdl.path()).subarray(0, 2).toString() === 'PK', 'committee report: Word');
+  await p.getByRole('button', { name: 'אישור תב"ע' }).click();
+  ok(await p.locator('.rp-table tbody tr').count() === 5, 'committee report: filter by gate');
+  await p.goto(base + '#/plans', { waitUntil: 'networkidle' });
   await p.locator('.dash-filters').getByRole('button', { name: /^תלויה בראיות/ }).click();
   ok((await p.locator('.plan-row').count()) === (await p.locator('.plan-row .ops-dot[title="תלויה בראיות"]').count()), 'verdict selector filters the list');
   await p.locator('.search input').fill('אחד העם');

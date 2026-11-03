@@ -8,6 +8,7 @@ import TopBar from '@/components/TopBar';
 import Rose from '@/components/Rose';
 import Selector from '@/components/Selector';
 import GateBars from '@/components/GateBars';
+import PlanMap from '@/components/PlanMap';
 import PlanPanel from '@/components/PlanPanel';
 import { VERDICT_COLOR } from '@/components/IsoGate';
 import Rich from '@/components/Rich';
@@ -33,13 +34,14 @@ function asProject(row: PlanRow): Project {
 
 export default function PlansView({ projects, saved }: AppProps) {
   const [params, setParams] = useSearchParams();
-  const { rows, live, takenAt, targets, setTargets, ready } = usePlans();
+  const { rows, live, takenAt, targets, setTargets, chapterMin, setChapterMin, ready, geo } = usePlans();
   const [search, setSearch] = useState('');
   const sel = params.get('p');
   const gates = params.get('g')?.split('|').filter(Boolean) as Gate[] ?? [];
   const verdicts = params.get('v')?.split('|').filter(Boolean) as Verdict[] ?? [];
   const kinds = params.get('k')?.split('|').filter(Boolean) ?? [];
   const [pane, setPane] = useState<Pane>(sel ? 'detail' : 'board');
+  const mode = params.get('m') === 'map' ? 'map' : 'board';
   const patch = (next: Record<string, string | null>) => {
     const p = new URLSearchParams(params);
     Object.entries(next).forEach(([k, v]) => (v ? p.set(k, v) : p.delete(k)));
@@ -80,7 +82,10 @@ export default function PlansView({ projects, saved }: AppProps) {
               <div key={v}><dt className="lbl">{VERDICT_HE[v].label}</dt><dd><bdi className="num kpi-big" style={{ color: VERDICT_COLOR[v] }}>{count(v)}</bdi></dd></div>
             ))}
           </dl>
-          <a className="press btn" href={MEASURE_APP} target="_blank" rel="noreferrer">למכשיר המדידה</a>
+          <span style={{ display: 'flex', gap: 6, flexWrap: 'wrap' }}>
+            <Link className="press btn btn-solid" to={`/batch${gates.length === 1 ? `?g=${gates[0]}` : ''}`}>דוח ועדה מרוכז</Link>
+            <a className="press btn" href={MEASURE_APP} target="_blank" rel="noreferrer">למכשיר המדידה</a>
+          </span>
         </header>
 
         <div className="panes-switch" role="tablist" aria-label="תצוגה">
@@ -102,6 +107,12 @@ export default function PlansView({ projects, saved }: AppProps) {
                     <bdi className="num">{targets[g]}</bdi>
                     <button className="press op" aria-label={`העלאת היעד ב${GATES[g].short}`} onClick={() => setTargets({ ...targets, [g]: Math.min(120, targets[g] + 5) })}>+</button>
                   </label>
+                ))}
+              </div>
+              <div className="selector" role="group" aria-label="מינימום לכל פרק">
+                <span className="lbl" style={{ marginInlineEnd: 4 }}>מינימום לפרק</span>
+                {[0, 25, 40, 50].map(v => (
+                  <button key={v} type="button" className="chip" aria-pressed={chapterMin === v} onClick={() => setChapterMin(v)}>{v ? `${v}%` : 'כבוי'}</button>
                 ))}
               </div>
               <Selector label="שער" options={GATE_ORDER.map(g => GATES[g].label)} value={gates.map(g => GATES[g].label)}
@@ -133,7 +144,15 @@ export default function PlansView({ projects, saved }: AppProps) {
 
           {/* ── מרכז: הלוח, או השושנה של התוכנית ── */}
           <section className="dash-focus" aria-label={row ? `שושנת ${row.plan.title}` : 'לוח השערים'}>
-            {row ? (
+            <div className="view-switch" role="group" aria-label="תצוגת המרכז">
+              <button className="chip" aria-pressed={mode === 'board' && !row} onClick={() => patch({ m: null, p: null })}>לוח השערים</button>
+              <button className="chip" aria-pressed={mode === 'map'} onClick={() => patch({ m: 'map' })}>מפה</button>
+              {row && <button className="chip" aria-pressed={mode !== 'map'} onClick={() => patch({ m: null })}>שושנת התוכנית</button>}
+              <span className="src">{mode === 'map' ? 'הקווים הכחולים של התוכניות, בצבע ההכרעה.' : row ? 'הניקוד של התוכנית, מדד אחר מדד.' : 'כל התוכניות, בשורה לכל שער, מול היעד.'}</span>
+            </div>
+            {mode === 'map' ? (
+              <div className="card" style={{ height: '100%', minHeight: 0 }}><PlanMap rows={filtered} geo={geo} selected={sel} onSelect={id => select(id)} /></div>
+            ) : row ? (
               <>
                 <div className="rose-wrap"><Rose project={asProject(row)} onSelect={() => {}} /></div>
                 <p className="rose-legend src">השושנה של <b>{row.plan.title}</b>: שטח צבוע הוא ניקוד שהוכח. פלח ריק הוא מדד שלא נמדד.</p>
