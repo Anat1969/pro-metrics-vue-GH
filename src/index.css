@@ -461,3 +461,23 @@
   .stage { grid-template-columns: minmax(0, 1fr) auto auto; }
   .stage > :last-child:empty { display: none; }
 }
+
+/* מרכז הלוח: בורר תצוגה ומפה */
+.dash-focus { grid-template-rows: auto minmax(0, 1fr) auto auto; }
+.view-switch { display: flex; flex-wrap: wrap; align-items: center; gap: 4px 6px; }
+.view-switch .src { margin-inline-start: 6px; }
+.map-wrap { position: relative; height: 100%; min-height: 320px; display: flex; flex-direction: column; }
+.plan-map { flex: 1; min-height: 0; width: 100%; display: block; background: #F4F4F2; touch-action: none; cursor: grab; }
+.plan-map:active { cursor: grabbing; }
+.map-tiles image { filter: grayscale(1) contrast(.95); opacity: .85; }
+.map-ops { position: absolute; top: 8px; left: 8px; display: flex; flex-direction: column; gap: 4px; }
+.map-ops .op { width: 30px; height: 30px; font-size: 16px; background: #fff; }
+.map-legend { position: absolute; bottom: 34px; right: 8px; display: flex; flex-wrap: wrap; gap: 4px 10px; align-items: center; background: rgba(255,255,255,.92); padding: 4px 8px; font-size: 12px; box-shadow: var(--shadow-1); max-width: calc(100% - 16px); }
+.map-legend i { display: inline-block; width: 10px; height: 10px; margin-inline-end: 4px; vertical-align: -1px; }
+.map-scale { display: inline-flex; align-items: center; gap: 4px; min-width: 60px; }
+.map-scale i { height: 4px; background: var(--ink); border: 0; display: inline-block; min-width: 20px; }
+.map-caption { margin: 0; padding: 6px 8px; border-top: 1px solid var(--rule); background: #fff; }
+@media (max-width: 760px) { .map-wrap { height: 62dvh; } }
+.rp-letter { white-space: pre-wrap; font-family: var(--font); font-size: 14px; line-height: 1.7; background: #fff; border: 1px solid var(--rule); box-shadow: var(--shadow-1); padding: 14px 18px; margin: 0; }
+.rp-head .selector { margin-top: 8px; }
+.rp-sub { margin-top: 14px; }

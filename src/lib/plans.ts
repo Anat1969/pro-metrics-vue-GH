@@ -18,7 +18,21 @@ export interface Plan {
 }
 export interface PlanScore { plan_project_id: string; stage: number; method: string; measured_at: string; metrics: Record<string, Evidence>; sources?: string[]; model?: string | null; rubric_version?: string | null }
 export interface PlanDoc { project_id: string; caption: string | null }
-export interface Snapshot { quarters: { id: string; name: string }[]; plans: Plan[]; scores: PlanScore[]; docs?: PlanDoc[]; taken_at: string }
+export type Geo = Record<string, { center: [number, number]; polygons: number[][][][] }>;
+export interface Snapshot { quarters: { id: string; name: string }[]; plans: Plan[]; scores: PlanScore[]; docs?: PlanDoc[]; geo?: Geo; taken_at: string }
+
+/** geojson של "מה נבנה סביבי" (Polygon, MultiPolygon, GeometryCollection) לרשימת מצולעים. */
+type G = { type: string; coordinates?: unknown; geometries?: G[] };
+export function toPolygons(fc: { features?: { geometry: G }[] } | null): number[][][][] {
+  const out: number[][][][] = [];
+  const walk = (g: G) => {
+    if (g.type === 'Polygon') out.push(g.coordinates as number[][][]);
+    else if (g.type === 'MultiPolygon') out.push(...(g.coordinates as number[][][][]));
+    else if (g.type === 'GeometryCollection') g.geometries?.forEach(walk);
+  };
+  fc?.features?.forEach(f => f.geometry && walk(f.geometry));
+  return out;
+}
 
 export const STATUS_HE: Record<string, string> = { planning: 'בתכנון', approved: 'מאושרת', permit: 'בהיתר', construction: 'בביצוע', done: 'הושלמה' };
 export const TRACK_HE: Record<string, string> = { pinui_binui: 'פינוי־בינוי', other: 'אחר' };
@@ -74,6 +88,7 @@ export interface GateResult {
   future: { max: number; asks: Ask[] };
   conditions: MetricRow[];
   rows: MetricRow[];
+  chapters: ChapterStat[]; chapterMin: number;
 }
 
 const isExcluded = (e?: Evidence) => !!e && e.score == null && /לא רלוונטי/.test(e.note || '');
@@ -88,7 +103,13 @@ export const STAGE_HE: Record<StageKey | 'after', string> = { taba: 'תב"ע', b
 /** האם מדד שייך לשער (נדרש בו או לפניו). */
 const inGate = (st: StageKey, gate: Gate) => gate !== 'taba' || st === 'taba';
 
-export function evaluate(ps: PlanScore | undefined, target: number, gate: Gate = 'binui'): GateResult {
+/** מינימום לכל פרק, באחוזים מהניקוד של הפרק (0 = כבוי). קביעת העירייה, ברירת מחדל כבוי. */
+const CKEY = 'shchuna360_chapter_min';
+export function loadChapterMin(): number { try { return Number(localStorage.getItem(CKEY) || 0); } catch { return 0; } }
+export function saveChapterMin(v: number) { try { localStorage.setItem(CKEY, String(v)); } catch { /* לא זמין */ } }
+export interface ChapterStat { chapter: string; max: number; proven: number; openNow: number; pct: number; ok: boolean; reachable: boolean }
+
+export function evaluate(ps: PlanScore | undefined, target: number, gate: Gate = 'binui', chapterMin = 0): GateResult {
   let got = 0, measured = 0, unmeasured = 0, excluded = 0;
   const asks: Ask[] = [];
   const rows: MetricRow[] = [];
@@ -129,13 +150,23 @@ export function evaluate(ps: PlanScore | undefined, target: number, gate: Gate =
   const pct = Math.round((got / SCALE) * 100);
   const points = Math.round((pct / 100) * SCALE);
   const ceiling = points + now.open;
-  const verdict: Verdict = points >= target ? 'pass' : ceiling >= target ? 'evidence' : 'fail';
+  // מינימום לפרק: גם תוכנית שעוברת את היעד הכולל לא "עומדת" אם פרק אחד מתחת למינימום
+  const chapters: ChapterStat[] = [...new Set(rows.map(x => x.chapter))].map(ch => {
+    const rs = rows.filter(x => x.chapter === ch && !x.excluded);
+    const max = rs.reduce((a, x) => a + x.max, 0);
+    const proven = rs.reduce((a, x) => a + (x.score ?? 0), 0);
+    const openNow = rs.filter(x => inGate(x.stage, gate)).reduce((a, x) => a + (x.max - (x.score ?? 0)), 0);
+    const pct = max ? Math.round((proven / max) * 100) : 0;
+    return { chapter: ch, max, proven, openNow, pct, ok: pct >= chapterMin, reachable: max ? ((proven + openNow) / max) * 100 >= chapterMin : true };
+  });
+  const chOk = chapters.every(c => c.ok), chReach = chapters.every(c => c.reachable);
+  const verdict: Verdict = points >= target && chOk ? 'pass' : ceiling >= target && chReach ? 'evidence' : 'fail';
   const by = (a: Ask, b: Ask) => b.gain - a.gain || a.n - b.n;
   asks.sort(by); now.evidence.sort(by); now.design.sort(by); future.asks.sort(by);
   return {
     proven: got, points, ceiling, target, need: Math.max(0, target - points), verdict, nextStageCan: ceiling + future.max >= target,
     measured, unmeasured, excluded, grade: gradeOf(points), asks, scores, now, future,
-    conditions: rows.filter(r => r.stageC && !r.excluded), rows,
+    conditions: rows.filter(r => r.stageC && !r.excluded), rows, chapters, chapterMin,
   };
 }
 
@@ -194,6 +225,14 @@ export function runChecks(plan: Plan, gate: Gate, r: GateResult, ps: PlanScore |
     result: `${r.points} נקודות הוכחו. בשלב אפשר לדרוש עד ${r.now.max}. היעד ${r.target}. ${VERDICT_HE[r.verdict].label}.`,
     how: 'נבדק אוטומטית: הוכח מול היעד, ואז הוכח ועוד כל מה שפתוח בשלב מול היעד. מה שלא נמדד נחשב 0, כמו בדרגה הרשמית.',
   });
+  if (r.chapterMin > 0) {
+    const low = r.chapters.filter(c => !c.ok);
+    checks.push({
+      key: 'chapters', title: `מינימום ${r.chapterMin}% לכל פרק`, status: low.length ? (low.some(c => !c.reachable) ? 'fail' : 'warn') : 'ok',
+      result: low.length ? `מתחת למינימום: ${low.map(c => `${c.chapter} ${c.pct}%`).join(', ')}.` : r.chapters.map(c => `${c.chapter} ${c.pct}%`).join(', ') + '.',
+      how: 'נבדק אוטומטית: ניקוד שהוכח בכל פרק, מתוך הניקוד המרבי של הפרק בלי מדדים לא רלוונטיים. המינימום נקבע בלוח.',
+    });
+  }
   if (plan.units_existing == null || plan.units_planned == null) {
     checks.push({ key: 'units', title: 'נתוני יחידות דיור', status: 'warn', result: 'חסר מספר יח"ד קיים או מתוכנן ב"מה נבנה סביבי".', how: 'נבדק אוטומטית: שדות units_existing ו-units_planned בתוכנית.' });
   }
@@ -234,15 +273,47 @@ async function rest<T>(path: string): Promise<T> {
 }
 
 export async function loadSnapshot(): Promise<Snapshot> {
-  return (await import('@/data/plans-snapshot.json')).default as Snapshot;
+  return (await import('@/data/plans-snapshot.json')).default as unknown as Snapshot;
 }
 
 export async function loadLive(): Promise<Snapshot> {
-  const [plans, scores, quarters, docs] = await Promise.all([
+  const [plans, scores, quarters, docs, shapes] = await Promise.all([
     rest<Plan[]>('plan_projects?select=id,title,kind,renewal_track,status,plan_number,quarter_id,units_existing,units_planned,developer&published=eq.true&order=title'),
     rest<PlanScore[]>('shchuna_plan_scores?select=plan_project_id,stage,method,measured_at,metrics,sources,model,rubric_version'),
     rest<{ id: string; name: string }[]>('quarters?select=id,name'),
     rest<PlanDoc[]>('plan_media?select=project_id,caption&kind=eq.document&order=sort').catch(() => [] as PlanDoc[]),
+    rest<{ id: string; center: [number, number]; geojson: Parameters<typeof toPolygons>[0] }[]>('plan_projects?select=id,center,geojson&published=eq.true').catch(() => []),
   ]);
-  return { plans, scores, quarters, docs, taken_at: new Date().toISOString().slice(0, 10) };
+  const geo: Geo = Object.fromEntries(shapes.map(x => [x.id, { center: x.center, polygons: toPolygons(x.geojson) }]));
+  return { plans, scores, quarters, docs, geo, taken_at: new Date().toISOString().slice(0, 10) };
+}
+
+/** מכתב ליזם: בקשת מסמכים ושיפורים לקראת השער. נוסח רשמי, בלי שם אישי. */
+export function developerLetter(plan: Plan, gate: Gate, r: GateResult, reqs: DocRequest[]): string {
+  const now = reqs.filter(d => !d.future);
+  const fut = reqs.filter(d => d.future);
+  const design = r.now.design.slice(0, 5);
+  const L: string[] = [
+    `עיריית אשדוד · ${new Date().toLocaleDateString('he-IL')}`,
+    '',
+    'לכבוד: היזם ועורך התוכנית',
+    `הנדון: ${plan.title}${plan.plan_number ? ` (${plan.plan_number})` : ''}: השלמות לקראת ${GATES[gate].label}`,
+    '',
+    `התוכנית נבדקה מול מדדי שכונה 360° (גרסה 2.0, ינואר 2025). בשלב זה אפשר לצבור עד ${r.now.max} נקודות. הוכחו במסמכים ${r.points} נקודות, מול יעד העירייה ${r.target}.`,
+    '',
+  ];
+  if (now.length) {
+    L.push('נבקש להשלים את המסמכים הבאים:');
+    now.forEach((d, i) => L.push(`${i + 1}. ${d.doc}: למדדים ${d.metrics.map(m => m.title).join(', ')} (עד ${d.gain} נקודות).`));
+    L.push('');
+  }
+  if (design.length) {
+    L.push('בנוסף, נבקש לבחון שיפורים בתכנון:');
+    design.forEach((a, i) => L.push(`${i + 1}. ${a.title}: יש פוטנציאל לעוד ${a.gain} נקודות.`));
+    L.push('');
+  }
+  if (fut.length) L.push(`לשלב הבא (${gate === 'taba' ? 'תוכנית בינוי' : 'היתר וביצוע'}) יידרשו גם: ${fut.map(d => d.doc).join('; ')}.`, '');
+  if (r.conditions.length) L.push(`בהיתר ובביצוע יידרשו דרישות שלב ג' ב-${r.conditions.length} מדדים, לפי החוברת.`, '');
+  L.push('פירוט מלא, כולל אופן הבדיקה של כל מדד, מצורף בדוח השער.', '', 'בברכה,', 'מינהל ההנדסה, עיריית אשדוד');
+  return L.join('\n');
 }

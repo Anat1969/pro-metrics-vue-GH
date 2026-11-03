@@ -1,7 +1,7 @@
-import React from 'react';
+import React, { useState } from 'react';
 import { Link, useParams } from 'react-router-dom';
 import { CHAPTER_HEX } from '@/data/indicators';
-import { GATES, GENERAL_GAPS, MA_NIVNE, MEASURE_APP, STAGE_HE, STATUS_HE, TRACK_HE, VERDICT_HE, sourceHe } from '@/lib/plans';
+import { GATES, GENERAL_GAPS, MA_NIVNE, MEASURE_APP, STAGE_HE, STATUS_HE, TRACK_HE, VERDICT_HE, sourceHe, developerLetter } from '@/lib/plans';
 import { usePlans } from '@/lib/usePlans';
 import TopBar from '@/components/TopBar';
 import Rich from '@/components/Rich';
@@ -12,12 +12,14 @@ const CHECK_COLOR = { ok: '#1D7A55', warn: '#BA7517', fail: '#A32D2D' } as const
 const CONF_HE: Record<string, string> = { document: 'ציטוט במסמך', inferred: 'הוסק מנתונים', simulation: 'סימולציה', none: 'לא נמצאה ראיה', excluded: 'לא רלוונטי' };
 // דוח Word נטען רק כשמבקשים אותו
 const downloadWord = (...a: Parameters<typeof import('@/lib/gateReport').downloadGateReport>) => import('@/lib/gateReport').then(m => m.downloadGateReport(...a));
+const downloadLetter = (...a: Parameters<typeof import('@/lib/gateReport').downloadLetter>) => import('@/lib/gateReport').then(m => m.downloadLetter(...a));
 
 /** הדוח המלא של שער אחד: הכרעה, שלבים, בדיקות אוטומטיות ואיך נבדקו, כל 44 המדדים, בקשות, ומה חסר. */
 export default function ReportView() {
   const { id } = useParams<{ id: string }>();
   const { rows, ready, live, targets } = usePlans();
   const row = rows.find(r => r.plan.id === id);
+  const [copied, setCopied] = useState(false);
 
   if (!ready) return <div className="app-shell"><TopBar menuItems={[]} /><main className="empty" style={{ placeSelf: 'center' }}><p>טוען את הדוח...</p></main></div>;
   if (!row) return (
@@ -112,6 +114,15 @@ export default function ReportView() {
               <ul className="rp-list">{futReq.map(d => <li key={d.doc}><b>{d.doc}</b>: {d.metrics.map(m => m.title).join(', ')} (עד <bdi className="num">{d.gain}</bdi>)</li>)}</ul>
             </>
           )}
+        </section>
+
+        <section className="rp-sub rp-letter-sec">
+          <h3>מכתב ליזם, מוכן לשליחה</h3>
+          <pre className="rp-letter">{developerLetter(p, gate, r, row.requests)}</pre>
+          <div className="rp-actions no-print">
+            <button className="press btn" onClick={() => { navigator.clipboard?.writeText(developerLetter(p, gate, r, row.requests)).catch(() => {}); setCopied(true); setTimeout(() => setCopied(false), 1400); }}>{copied ? 'הועתק' : 'העתקת המכתב'}</button>
+            <button className="press btn" onClick={() => downloadLetter(row)}>המכתב כ-Word</button>
+          </div>
         </section>
 
         <section className="rp-sec">
